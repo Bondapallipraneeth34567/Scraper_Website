@@ -18,19 +18,41 @@ function notify() {
   listeners.forEach((fn) => fn());
 }
 
+async function throwApiError(res) {
+  const data = await res.json().catch(() => null);
+  throw new Error(data?.error || `API error ${res.status}`);
+}
+
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const res = await fetch(`${API_BASE}${path}`, { credentials: 'include' });
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 async function apiPost(path, body) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function login(email, password) {
+  return apiPost('/auth/login', { email, password });
+}
+
+export async function logout() {
+  return apiPost('/auth/logout', {});
+}
+
+/** Returns the current user, or null if not logged in (401 is expected here, not an error). */
+export async function getCurrentUser() {
+  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+  if (res.status === 401) return null;
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -51,20 +73,12 @@ export async function getRecordById(id) {
   return apiGet(`/records/${id}`);
 }
 
-// NOTE on auth: this posts to the live Azure-SQL-backed API with no
-// Authorization header, and verifiedBy is plain client-supplied data — the
-// backend (backend/server.js, not in this repo) MUST independently verify
-// the caller's identity and set/validate verifiedBy server-side before this
-// goes live against production data. Nothing in this file can enforce that
-// from the frontend; removing the old 'Praneeth' fallback below only stops
-// the frontend from *silently* misattributing verifications when a caller
-// forgets to pass verifiedBy — it is not a substitute for server-side auth.
-export async function verifyRecord(id, { status, fieldResults, issueType, expectedValue, scrapedValue, notes, verifiedBy }) {
-  if (!verifiedBy) {
-    throw new Error('verifyRecord: verifiedBy is required (pass the current user’s identity, not a default)');
-  }
+// verified_by is derived server-side from the authenticated session
+// (backend/server.js), not sent by the client — resolved now that real
+// login exists.
+export async function verifyRecord(id, { status, fieldResults, issueType, expectedValue, scrapedValue, notes }) {
   await apiPost(`/records/${id}/verify`, {
-    status, fieldResults, issueType, expectedValue, scrapedValue, notes, verifiedBy,
+    status, fieldResults, issueType, expectedValue, scrapedValue, notes,
   });
   notify();
   return getRecordById(id);

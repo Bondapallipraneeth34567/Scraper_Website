@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { LogIn } from 'lucide-react';
 import AuthLayout from './AuthLayout';
@@ -23,11 +23,11 @@ export default function Login() {
     }
     setSubmitting(true);
     try {
-      await login({ email });
+      await login({ email, password });
       toast.success('Logged in successfully');
       navigate(redirectTo, { replace: true });
-    } catch {
-      toast.error('Unable to log in');
+    } catch (err) {
+      toast.error(err.message || 'Unable to log in');
     } finally {
       setSubmitting(false);
     }
@@ -74,13 +74,6 @@ export default function Login() {
           {submitting ? 'Logging in…' : 'Log in'}
         </button>
       </form>
-
-      <p className="mt-5 text-center text-xs text-ink-soft">
-        Don&apos;t have an account?{' '}
-        <Link to="/signup" className="font-semibold text-good hover:underline">
-          Sign up
-        </Link>
-      </p>
     </AuthLayout>
   );
 }

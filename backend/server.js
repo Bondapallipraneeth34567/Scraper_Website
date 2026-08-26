@@ -1,10 +1,66 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { getPool, sql } from './db.js';
+import { comparePassword, signToken, COOKIE_NAME, setCookieOptions, clearCookieOptions, requireAuth } from './auth.js';
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+app.use(cookieParser());
 app.use(express.json());
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+// Public signup is intentionally disabled — exactly one account exists,
+// seeded via seed_admin_user.js. Login is the only way in.
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const password = String(req.body.password || '');
+
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('email', sql.NVarChar, email)
+      .query('SELECT user_id, name, email, password_hash, role FROM dbo.DashboardUsers WHERE email = @email');
+
+    const row = result.recordset[0];
+    const ok = row ? await comparePassword(password, row.password_hash) : false;
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const user = { id: Number(row.user_id), name: row.name, email: row.email, role: row.role };
+    res.cookie(COOKIE_NAME, signToken(user), setCookieOptions());
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, clearCookieOptions());
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json(req.user);
+});
+
+app.use('/api', requireAuth);
 
 const TARGET_COMMODITIES_PER_DAY = 585;
 
@@ -277,7 +333,7 @@ app.get('/api/records/:id/next-pending', async (req, res) => {
 
 app.post('/api/records/:id/verify', async (req, res) => {
   try {
-    const { status, fieldResults, issueType, expectedValue, scrapedValue, notes, verifiedBy } = req.body;
+    const { status, fieldResults, issueType, expectedValue, scrapedValue, notes } = req.body;
     const pool = await getPool();
     await pool.request()
       .input('marketPriceId', sql.BigInt, req.params.id)
@@ -287,7 +343,7 @@ app.post('/api/records/:id/verify', async (req, res) => {
       .input('expectedValue', sql.NVarChar, expectedValue || null)
       .input('scrapedValue', sql.NVarChar, scrapedValue || null)
       .input('notes', sql.NVarChar, notes || null)
-      .input('verifiedBy', sql.NVarChar, verifiedBy || null)
+      .input('verifiedBy', sql.NVarChar, req.user.name)
       .query(`
         INSERT INTO dbo.VerificationResults
           (market_price_id, status, field_results, issue_type, expected_value, scraped_value, notes, verified_by)
