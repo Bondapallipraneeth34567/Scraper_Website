@@ -1,0 +1,8 @@
+# This repo is scoped to the QA dashboard app only (frontend/ + backend/).
+# Everything else in this folder (the WhatsApp/voice bot, service-account.json,
+# scraper, .env with unrelated secrets) is a separate project and must never
+# enter this repo's history.
+/*
+!/frontend
+!/backend
+!/.gitignore
