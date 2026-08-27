@@ -9,16 +9,21 @@ import { comparePassword, signToken, COOKIE_NAME, setCookieOptions, clearCookieO
 
 const app = express();
 
-// Full Agmarknet commodity-group taxonomy (group -> [commodity, ...]),
-// harvested straight from the live site by
+// Full Agmarknet commodity-group taxonomy (group -> [commodity, ...]).
+// Originally harvested straight from the live site by the (separate,
+// gitignored — see .gitignore) scraper project's
 // bot_processors/pricing/agmarknet_scraper.py::harvest_commodity_reference()
 // (see frontend/src/data/siteTotals.js — 16 groups / 604 commodities,
-// confirmed against agmarknet.gov.in on 2026-08-20). dbo.MarketPrices has
-// no commodity_group column, so this reference file is the only source of
-// truth for the group a commodity belongs to.
+// confirmed against agmarknet.gov.in on 2026-08-20) and copied into this
+// repo's own backend/data/ so the dashboard has no runtime dependency on
+// the scraper project's directory existing alongside it — this repo is
+// scoped to frontend/+backend/ only. dbo.MarketPrices has no
+// commodity_group column, so this file is the only source of truth for
+// the group a commodity belongs to; re-copy it here if the scraper
+// re-harvests a changed taxonomy.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMMODITY_GROUPS = JSON.parse(
-  readFileSync(join(__dirname, '..', 'bot_processors', 'data', 'agmarknet_commodities.json'), 'utf8')
+  readFileSync(join(__dirname, 'data', 'agmarknet_commodities.json'), 'utf8')
 );
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
