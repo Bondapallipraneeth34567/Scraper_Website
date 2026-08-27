@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { getRecords, subscribe } from '../services/verificationService';
 
 /** Filtered, server-paginated record list that re-fetches whenever filters,
@@ -13,21 +13,32 @@ export default function useRecords(filters, { page = 1, pageSize = 50, sortBy, s
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Guards against out-of-order responses — e.g. double-clicking the
+  // pager can fire page-2's request just before page-3's, and if page-2's
+  // slower response resolves after page-3's, it would otherwise overwrite
+  // the table with stale rows. Only the most recently *started* request is
+  // allowed to commit state.
+  const requestIdRef = useRef(0);
+
   const refetch = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     getRecords({ ...filters, page, pageSize, sortBy, sortDir })
       .then(({ records: r, total: t }) => {
+        if (requestIdRef.current !== requestId) return;
         setRecords(r);
         setTotal(t);
       })
       .catch((err) => {
+        if (requestIdRef.current !== requestId) return;
         console.error('Failed to load records:', err);
         setRecords([]);
         setTotal(0);
         setError(err.message || 'Unable to load records');
       })
       .finally(() => {
+        if (requestIdRef.current !== requestId) return;
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps

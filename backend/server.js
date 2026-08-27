@@ -319,11 +319,17 @@ app.get('/api/records', async (req, res) => {
       if (names.length === 0) {
         where += ' AND 1=0';
       } else {
+        // LOWER() on both sides, not a bare IN — every other group-aware
+        // endpoint here (commodities?group=, commodity-coverage) matches
+        // case-insensitively since the taxonomy file's casing isn't
+        // guaranteed to match what's actually stored in dbo.MarketPrices;
+        // relying on the DB's default collation for that instead would
+        // silently break if collation ever changed.
         const paramNames = names.map((name, i) => {
-          request.input(`cg${i}`, sql.NVarChar, name);
+          request.input(`cg${i}`, sql.NVarChar, name.toLowerCase());
           return `@cg${i}`;
         });
-        where += ` AND mp.commodity IN (${paramNames.join(',')})`;
+        where += ` AND LOWER(mp.commodity) IN (${paramNames.join(',')})`;
       }
     }
     if (search) {

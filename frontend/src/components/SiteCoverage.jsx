@@ -19,8 +19,13 @@ export default function SiteCoverage({ overview }) {
 
   const { missingTotal, groupsWithGaps } = useMemo(() => {
     if (!coverage) return { missingTotal: 0, groupsWithGaps: [] };
+    // A handful of commodities (e.g. "Kutki") are listed under more than
+    // one group in the source taxonomy — dedupe by name so a commodity
+    // missing from two groups isn't counted twice against the 604 total.
+    const distinctMissing = new Set();
+    coverage.forEach((g) => g.missing.forEach((c) => distinctMissing.add(c.toLowerCase())));
     return {
-      missingTotal: coverage.reduce((sum, g) => sum + g.missing.length, 0),
+      missingTotal: distinctMissing.size,
       groupsWithGaps: coverage.filter((g) => g.missing.length > 0),
     };
   }, [coverage]);
