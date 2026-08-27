@@ -1,10 +1,25 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { getPool, sql } from './db.js';
 import { comparePassword, signToken, COOKIE_NAME, setCookieOptions, clearCookieOptions, requireAuth } from './auth.js';
 
 const app = express();
+
+// Full Agmarknet commodity-group taxonomy (group -> [commodity, ...]),
+// harvested straight from the live site by
+// bot_processors/pricing/agmarknet_scraper.py::harvest_commodity_reference()
+// (see frontend/src/data/siteTotals.js — 16 groups / 604 commodities,
+// confirmed against agmarknet.gov.in on 2026-08-20). dbo.MarketPrices has
+// no commodity_group column, so this reference file is the only source of
+// truth for the group a commodity belongs to.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const COMMODITY_GROUPS = JSON.parse(
+  readFileSync(join(__dirname, '..', 'bot_processors', 'data', 'agmarknet_commodities.json'), 'utf8')
+);
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
@@ -213,21 +228,66 @@ app.get('/api/filters/markets', async (req, res) => {
   }
 });
 
+// Commodity Group is a reference-file dimension (no DB column — see
+// COMMODITY_GROUPS above), so this list doesn't depend on the DB at all.
+app.get('/api/filters/commodity-groups', (req, res) => {
+  res.json(Object.keys(COMMODITY_GROUPS));
+});
+
 app.get('/api/filters/commodities', async (req, res) => {
   try {
     const pool = await getPool();
     const result = await pool.request().query('SELECT DISTINCT commodity FROM dbo.MarketPrices ORDER BY commodity');
-    res.json(result.recordset.map((r) => r.commodity));
+    let commodities = result.recordset.map((r) => r.commodity);
+    const group = req.query.group;
+    if (group && group !== 'All') {
+      const groupSet = new Set((COMMODITY_GROUPS[group] || []).map((c) => c.toLowerCase()));
+      commodities = commodities.filter((c) => groupSet.has(String(c).toLowerCase()));
+    }
+    res.json(commodities);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Cross-references the DB's scraped commodities against the full site
+// taxonomy so the frontend can show exactly which commodities/groups have
+// no data yet, instead of that gap being invisible.
+app.get('/api/filters/commodity-coverage', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request().query('SELECT DISTINCT commodity FROM dbo.MarketPrices');
+    const dbSet = new Set(result.recordset.map((r) => String(r.commodity).toLowerCase()));
+    const groups = Object.entries(COMMODITY_GROUPS).map(([group, commodities]) => {
+      const missing = commodities.filter((c) => !dbSet.has(c.toLowerCase()));
+      return { group, total: commodities.length, scraped: commodities.length - missing.length, missing };
+    });
+    res.json(groups);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Whitelisted so ORDER BY can never take raw user input.
+const SORT_COLUMNS = {
+  id: 'mp.market_price_id',
+  date: 'mp.arrival_date',
+  state: 'mp.state',
+  district: 'mp.district',
+  market: 'mp.market',
+  commodity: 'mp.commodity',
+  minPrice: 'mp.min_price_quintal',
+  maxPrice: 'mp.max_price_quintal',
+  modalPrice: 'mp.modal_price_quintal',
+  arrivalQty: 'mp.arrival_qty',
+  arrivalUnit: 'mp.arrival_unit',
+};
+
 app.get('/api/records', async (req, res) => {
   try {
     const pool = await getPool();
     const request = pool.request();
-    const { date, state, district, market, commodity, status, search } = req.query;
+    const { date, state, district, market, commodity, commodityGroup, status, search, sortBy, sortDir } = req.query;
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(200, Number(req.query.pageSize) || 50);
 
@@ -252,6 +312,20 @@ app.get('/api/records', async (req, res) => {
       request.input('commodity', sql.NVarChar, commodity);
       where += ' AND mp.commodity = @commodity';
     }
+    if (commodityGroup && commodityGroup !== 'All') {
+      // No commodity_group column on dbo.MarketPrices — translate the group
+      // to its member commodity names via the reference taxonomy instead.
+      const names = COMMODITY_GROUPS[commodityGroup] || [];
+      if (names.length === 0) {
+        where += ' AND 1=0';
+      } else {
+        const paramNames = names.map((name, i) => {
+          request.input(`cg${i}`, sql.NVarChar, name);
+          return `@cg${i}`;
+        });
+        where += ` AND mp.commodity IN (${paramNames.join(',')})`;
+      }
+    }
     if (search) {
       request.input('search', sql.NVarChar, `%${search}%`);
       where += ' AND (mp.market LIKE @search OR mp.commodity LIKE @search OR mp.district LIKE @search OR mp.state LIKE @search)';
@@ -271,12 +345,21 @@ app.get('/api/records', async (req, res) => {
     });
     const countRes = await countResult.query(`SELECT COUNT(*) AS total FROM dbo.MarketPrices mp ${LATEST_VERIFICATION_JOIN} ${where}`);
 
+    const orderColumn = SORT_COLUMNS[sortBy] || SORT_COLUMNS.id;
+    const orderDir = sortDir === 'desc' ? 'DESC' : 'ASC';
+    // A tiebreaker on market_price_id keeps paging stable when the sorted
+    // column has duplicate values — but SQL Server rejects the same column
+    // listed twice, which happens whenever the sort column already IS id.
+    const orderBy = orderColumn === SORT_COLUMNS.id
+      ? `${orderColumn} ${orderDir}`
+      : `${orderColumn} ${orderDir}, mp.market_price_id ${orderDir}`;
+
     const dataRes = await request.query(`
       SELECT mp.*, vr.status, vr.notes, vr.verified_by, vr.verified_at
       FROM dbo.MarketPrices mp
       ${LATEST_VERIFICATION_JOIN}
       ${where}
-      ORDER BY mp.market_price_id
+      ORDER BY ${orderBy}
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
 

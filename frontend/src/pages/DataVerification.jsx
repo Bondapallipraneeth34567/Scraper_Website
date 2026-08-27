@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Upload, Download } from 'lucide-react';
@@ -7,21 +7,52 @@ import FilterBar from '../components/FilterBar';
 import RecordsTable from '../components/RecordsTable';
 import ImportCsvModal from '../components/ImportCsvModal';
 import useRecords from '../hooks/useRecords';
-import { getIssues } from '../services/verificationService';
+import { getIssues, getAllRecords } from '../services/verificationService';
 import { buildVerificationResultsCSV, downloadCSV } from '../utils/csv';
 import { ISSUE_TYPE_LABELS } from '../data/issueTypes';
 
 export default function DataVerification() {
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState({ search: searchParams.get('search') || '' });
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState({ key: 'id', dir: 'asc' });
   const [importOpen, setImportOpen] = useState(false);
-  const { records, total, loading, error, refetch } = useRecords(filters);
+  const pageSize = 50;
+  const { records, total, loading, error, refetch } = useRecords(filters, {
+    page,
+    pageSize,
+    sortBy: sort.key,
+    sortDir: sort.dir,
+  });
+
+  // A new filter (e.g. picking a state) can leave `page` pointing past the
+  // new, narrower result set — reset to page 1 whenever filters change.
+  function handleFiltersChange(next) {
+    setFilters(next);
+    setPage(1);
+  }
+
+  // Verifying a record on the last page (via the global subscribe() a
+  // write triggers) can shrink `total` enough that `page` now points past
+  // the end — the server then returns 0 rows for an OFFSET beyond the
+  // result set, while the pager/total text still reflected the old page.
+  // Clamp back onto the real last page whenever total changes.
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [total, pageSize, page]);
 
   async function handleExport() {
-    if (records.length === 0) {
+    if (total === 0) {
       toast.error('No records match the current filters to export');
       return;
     }
+
+    // Export must cover every matching row, not just the 50 currently on
+    // screen — same reasoning as why browsing a state with thousands of
+    // rows now pages through the server instead of stopping at the first
+    // batch.
+    const allRecords = await getAllRecords(filters);
 
     // Cross-reference issues so a mismatched/missing/duplicate row's issue
     // type and the tester's recorded source value make it into the export
@@ -32,7 +63,7 @@ export default function DataVerification() {
       if (!latestIssueByRecord.has(i.recordId)) latestIssueByRecord.set(i.recordId, i);
     });
 
-    const rows = records.map((r) => {
+    const rows = allRecords.map((r) => {
       const issue = latestIssueByRecord.get(r.id);
       return {
         record_id: r.id,
@@ -77,8 +108,21 @@ export default function DataVerification() {
         Data is available from August 1, 2026 and is updated daily.
       </p>
 
-      <FilterBar filters={filters} onChange={setFilters} />
-      <RecordsTable records={records} total={total} loading={loading} error={error} />
+      <FilterBar filters={filters} onChange={handleFiltersChange} />
+      <RecordsTable
+        records={records}
+        total={total}
+        loading={loading}
+        error={error}
+        page={page}
+        pageSize={pageSize}
+        sort={sort}
+        onSortChange={(next) => {
+          setSort(next);
+          setPage(1);
+        }}
+        onPageChange={setPage}
+      />
 
       <ImportCsvModal open={importOpen} onClose={() => setImportOpen(false)} />
     </DashboardLayout>

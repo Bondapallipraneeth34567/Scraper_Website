@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { FileWarning } from 'lucide-react';
 import DashboardLayout from '../components/layout/DashboardLayout';
-import { getRecords, subscribe } from '../services/verificationService';
+import { getAllRecords, subscribe } from '../services/verificationService';
 import { formatDate } from '../utils/format';
 
 export default function MissingData() {
   const [records, setRecords] = useState(null);
 
   useEffect(() => {
-    const load = () => getRecords({ status: 'missing' }).then(({ records: r }) => setRecords(r));
+    const load = () => getAllRecords({ status: 'missing' }).then(setRecords);
     load();
     return subscribe(load);
   }, []);

@@ -61,12 +61,31 @@ export async function getRecords(filters = {}) {
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') params.set(key, value);
   });
-  params.set('pageSize', filters.pageSize || 200);
-  // { records, total } — total is the real count matching the filters in
-  // the database, not just how many rows were fetched into this page
-  // (pageSize caps at 200 per request, but total reflects e.g. all
-  // 72,000+ rows when no filter narrows it).
+  if (!params.has('pageSize')) params.set('pageSize', 50);
+  // { records, total, page, pageSize } — total is the real count matching
+  // the filters in the database. records only holds the current page (see
+  // page/pageSize), so callers that need every matching row (e.g. a state
+  // with thousands of matches) must page through, not assume records holds
+  // everything — that's what used to silently truncate results.
   return apiGet(`/records?${params.toString()}`);
+}
+
+/** Pages through /records (200/request cap) to collect every row matching
+ * `filters`, for callers that need the full matching set rather than one
+ * screen's worth — CSV export, or a list like MissingData that has no
+ * pager of its own and would otherwise silently cap at whatever pageSize
+ * it picked. Fetches pages in parallel once the first page reveals the
+ * total, rather than awaiting them one at a time. */
+export async function getAllRecords(filters = {}) {
+  const pageSize = 200;
+  const first = await getRecords({ ...filters, page: 1, pageSize });
+  const totalPages = Math.max(1, Math.ceil(first.total / pageSize));
+  if (totalPages === 1) return first.records;
+
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => getRecords({ ...filters, page: i + 2, pageSize }))
+  );
+  return [first.records, ...rest.map((r) => r.records)].flat();
 }
 
 export async function getRecordById(id) {
@@ -109,8 +128,20 @@ export async function getMarkets(state, district) {
   return apiGet(`/filters/markets${q ? `?${q}` : ''}`);
 }
 
-export async function getCommodities() {
-  return apiGet('/filters/commodities');
+export async function getCommodityGroups() {
+  return apiGet('/filters/commodity-groups');
+}
+
+export async function getCommodities(group) {
+  const q = group && group !== 'All' ? `?group=${encodeURIComponent(group)}` : '';
+  return apiGet(`/filters/commodities${q}`);
+}
+
+/** Per-group scraped-vs-site-taxonomy counts, with the actual list of
+ * commodities that exist on agmarknet.gov.in but have no rows in
+ * dbo.MarketPrices yet — used by SiteCoverage to make that gap visible. */
+export async function getCommodityCoverage() {
+  return apiGet('/filters/commodity-coverage');
 }
 
 export async function getCompletenessByDate() {

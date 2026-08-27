@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
-import { getStates, getDistricts, getMarkets, getCommodities } from '../services/verificationService';
+import { getStates, getDistricts, getMarkets, getCommodityGroups, getCommodities } from '../services/verificationService';
 import { STATUS_META } from './StatusBadge';
-
-const TAXONOMY_TOTALS = {
-  states: 36,
-  districts: 600,
-  markets: 3800,
-  commodities: 608,
-};
+import { SITE_TOTALS } from '../data/siteTotals';
 
 const FILTER_STATUSES = ['missing', 'duplicate'];
 
@@ -101,11 +95,12 @@ export default function FilterBar({ filters, onChange, hideStatus = false }) {
   const [states, setStates] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [markets, setMarkets] = useState([]);
+  const [commodityGroups, setCommodityGroups] = useState([]);
   const [commodities, setCommodities] = useState([]);
 
   useEffect(() => {
     getStates().then(setStates);
-    getCommodities().then(setCommodities);
+    getCommodityGroups().then(setCommodityGroups);
   }, []);
 
   // District options depend on the selected state; refetch on change.
@@ -118,6 +113,13 @@ export default function FilterBar({ filters, onChange, hideStatus = false }) {
     getMarkets(draft.state, draft.district).then(setMarkets);
   }, [draft.state, draft.district]);
 
+  // Commodity options narrow to the selected group (dbo.MarketPrices has no
+  // commodity_group column, so the group->commodity mapping comes from the
+  // agmarknet reference taxonomy server-side — see /api/filters/commodities).
+  useEffect(() => {
+    getCommodities(draft.commodityGroup).then(setCommodities);
+  }, [draft.commodityGroup]);
+
   function setField(key, value) {
     setDraft((d) => {
       const next = { ...d, [key]: value };
@@ -128,6 +130,8 @@ export default function FilterBar({ filters, onChange, hideStatus = false }) {
         next.market = 'All';
       } else if (key === 'district') {
         next.market = 'All';
+      } else if (key === 'commodityGroup') {
+        next.commodity = 'All';
       }
       return next;
     });
@@ -169,28 +173,40 @@ export default function FilterBar({ filters, onChange, hideStatus = false }) {
 
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-          State <span className="text-ink-soft">({TAXONOMY_TOTALS.states})</span>
+          State <span className="text-ink-soft">({SITE_TOTALS.states})</span>
         </label>
         <SearchableDropdown value={draft.state} options={states} placeholder="State" onChange={(value) => setField('state', value)} />
       </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-          District <span className="text-ink-soft">({TAXONOMY_TOTALS.districts.toLocaleString('en-IN')})</span>
+          District <span className="text-ink-soft">({SITE_TOTALS.districts.toLocaleString('en-IN')})</span>
         </label>
         <SearchableDropdown value={draft.district} options={districts} placeholder="District" onChange={(value) => setField('district', value)} />
       </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-          Market <span className="text-ink-soft">({TAXONOMY_TOTALS.markets.toLocaleString('en-IN')})</span>
+          Market <span className="text-ink-soft">({SITE_TOTALS.markets.toLocaleString('en-IN')})</span>
         </label>
         <SearchableDropdown value={draft.market} options={markets} placeholder="Market" onChange={(value) => setField('market', value)} />
       </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-          Commodity <span className="text-ink-soft">({TAXONOMY_TOTALS.commodities})</span>
+          Commodity Group <span className="text-ink-soft">({SITE_TOTALS.commodityGroups})</span>
+        </label>
+        <SearchableDropdown
+          value={draft.commodityGroup}
+          options={commodityGroups}
+          placeholder="Commodity Group"
+          onChange={(value) => setField('commodityGroup', value)}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+          Commodity <span className="text-ink-soft">({SITE_TOTALS.commodities.toLocaleString('en-IN')})</span>
         </label>
         <SearchableDropdown value={draft.commodity} options={commodities} placeholder="Commodity" onChange={(value) => setField('commodity', value)} />
       </div>

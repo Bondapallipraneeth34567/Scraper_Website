@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils/format';
 
@@ -16,30 +15,17 @@ const COLUMNS = [
   { key: 'arrivalUnit', label: 'Arrival Unit', sortable: true },
 ];
 
-const PAGE_SIZE = 10;
-
-export default function RecordsTable({ records, total, loading, error }) {
-  const [sort, setSort] = useState({ key: 'id', dir: 'asc' });
-  const [page, setPage] = useState(1);
-
-  const sorted = useMemo(() => {
-    const copy = [...records];
-    copy.sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
-      if (av === bv) return 0;
-      const result = av > bv ? 1 : -1;
-      return sort.dir === 'asc' ? result : -result;
-    });
-    return copy;
-  }, [records, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+/** Records/page/sort are all driven by the server (see useRecords) — this
+ * component only renders the current page, it doesn't slice or sort
+ * client-side. That's the fix for filtered results (e.g. one state with
+ * thousands of matching rows) silently getting cut off at whatever the API
+ * happened to return for page 1. */
+export default function RecordsTable({ records, total, loading, error, page, pageSize, sort, onSortChange, onPageChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageSafe = Math.min(page, totalPages);
-  const pageRecords = sorted.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
 
   function toggleSort(key) {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    onSortChange(key === sort.key && sort.dir === 'asc' ? { key, dir: 'desc' } : { key, dir: 'asc' });
   }
 
   return (
@@ -81,14 +67,14 @@ export default function RecordsTable({ records, total, loading, error }) {
                   Unable to load records. The backend may be unavailable or the query failed.
                 </td>
               </tr>
-            ) : pageRecords.length === 0 ? (
+            ) : records.length === 0 ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-sm text-ink-soft">
                   No records match these filters.
                 </td>
               </tr>
             ) : (
-              pageRecords.map((r) => (
+              records.map((r) => (
                 <tr
                   key={r.id}
                   className="border-b border-line-soft last:border-0 hover:bg-canvas"
@@ -115,20 +101,15 @@ export default function RecordsTable({ records, total, loading, error }) {
 
       <div className="flex items-center justify-between border-t border-line px-3.5 py-2.5 text-xs text-ink-soft">
         <span>
-          Showing {sorted.length === 0 ? 0 : (pageSafe - 1) * PAGE_SIZE + 1}
-          –{Math.min(pageSafe * PAGE_SIZE, sorted.length)} of {sorted.length.toLocaleString('en-IN')} loaded
-          {total !== undefined && total > sorted.length && (
-            <>
-              {' '}· <b className="text-ink">{total.toLocaleString('en-IN')}</b> total match these filters
-              (narrow the filters or add server-side paging to browse the rest)
-            </>
-          )}
+          Showing {total === 0 ? 0 : (pageSafe - 1) * pageSize + 1}
+          –{Math.min(pageSafe * pageSize, total)} of <b className="text-ink">{total.toLocaleString('en-IN')}</b> matching
+          these filters
         </span>
         <div className="flex items-center gap-1">
           <button
             type="button"
             disabled={pageSafe <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => onPageChange(pageSafe - 1)}
             className="rounded-md border border-line px-2 py-1 font-mono disabled:opacity-40"
           >
             ‹
@@ -139,7 +120,7 @@ export default function RecordsTable({ records, total, loading, error }) {
           <button
             type="button"
             disabled={pageSafe >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => onPageChange(pageSafe + 1)}
             className="rounded-md border border-line px-2 py-1 font-mono disabled:opacity-40"
           >
             ›
