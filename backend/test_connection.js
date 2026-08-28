@@ -1,27 +1,24 @@
 import 'dotenv/config';
-import sql from 'mssql';
+import pg from 'pg';
 
-const config = {
-  server: process.env.MSSQL_HOST,
-  port: Number(process.env.MSSQL_PORT),
-  database: process.env.MSSQL_DB,
-  user: process.env.MSSQL_USER,
-  password: process.env.MSSQL_PASSWORD,
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-  },
-  connectionTimeout: 15000,
-};
+const { Client } = pg;
+
+const client = new Client({
+  host: process.env.POSTGRES_HOST,
+  port: Number(process.env.POSTGRES_PORT),
+  database: process.env.POSTGRES_DB,
+  user: process.env.POSTGRES_USER,
+  password: process.env.POSTGRES_PASSWORD,
+  ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 15000,
+});
 
 try {
-  const pool = await sql.connect(config);
-  const result = await pool.request().query(
-    "SELECT COUNT(*) AS total FROM dbo.MarketPrices"
-  );
+  await client.connect();
+  const result = await client.query('SELECT COUNT(*) AS total FROM mandi.market_prices');
   console.log('CONNECTED OK');
-  console.log('MarketPrices row count:', result.recordset[0].total);
-  await pool.close();
+  console.log('market_prices row count:', result.rows[0].total);
+  await client.end();
   process.exit(0);
 } catch (err) {
   console.error('CONNECTION FAILED:', err.message);
