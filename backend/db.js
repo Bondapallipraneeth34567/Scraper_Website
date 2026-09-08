@@ -1,7 +1,7 @@
 // TZ pinned before anything touches a Date — node-postgres's default
 // timestamp-without-timezone parser builds JS Date objects from local
 // wall-clock components, so a non-UTC host would otherwise silently shift
-// every scraped_at/verified_at by its own offset. mandi.market_prices'
+// every scraped_at/verified_at by its own offset. mandi.market_prices_v2's
 // scraped_at is written as UTC (see the scraper's `(now() AT TIME ZONE
 // 'utc')`), so the reader has to agree it's UTC too. Must run before the
 // `pg` import below — Node re-reads process.env.TZ lazily per Date

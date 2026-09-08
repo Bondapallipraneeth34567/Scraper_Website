@@ -15,9 +15,9 @@ const client = new Client({
 
 try {
   await client.connect();
-  const result = await client.query('SELECT COUNT(*) AS total FROM mandi.market_prices');
+  const result = await client.query('SELECT COUNT(*) AS total FROM mandi.market_prices_v3');
   console.log('CONNECTED OK');
-  console.log('market_prices row count:', result.rows[0].total);
+  console.log('market_prices_v3 row count:', result.rows[0].total);
   await client.end();
   process.exit(0);
 } catch (err) {

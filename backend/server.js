@@ -17,10 +17,12 @@ const app = express();
 // confirmed against agmarknet.gov.in on 2026-08-20) and copied into this
 // repo's own backend/data/ so the dashboard has no runtime dependency on
 // the scraper project's directory existing alongside it — this repo is
-// scoped to frontend/+backend/ only. mandi.market_prices has no
-// commodity_group column, so this file is the only source of truth for
-// the group a commodity belongs to; re-copy it here if the scraper
-// re-harvests a changed taxonomy.
+// scoped to frontend/+backend/ only. market_prices_v2 does have its own
+// commodity_group column (unlike the retired market_prices), but the
+// group-filtering endpoints below still resolve group -> commodity names
+// through this taxonomy file rather than that column — group membership
+// here should stay the single source of truth either way; re-copy this
+// file here if the scraper re-harvests a changed taxonomy.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMMODITY_GROUPS = JSON.parse(
   readFileSync(join(__dirname, 'data', 'agmarknet_commodities.json'), 'utf8')
@@ -54,6 +56,17 @@ function normalizeEmail(email) {
 // side moved with it, VerificationResults/DashboardUsers included, since
 // VerificationResults FK's onto market_prices and can't join across two
 // different database engines in one query.
+//
+// History: market_prices (DOM+pagination scraper) -> market_prices_v2
+// (CSV-export browser scraper, 2026-09-02) -> market_prices_v3 (2026-09-08,
+// current). v3 is written by the mandi_pipeline "AGMARKNET direct API"
+// scraper (Approach 1): no headless browser, calls the site's own
+// /daily-price-arrival/report JSON endpoint per commodity, one CAPTCHA
+// each. It is the only one of the three still updating daily — market_prices
+// stopped 2026-09-02, market_prices_v2's scraper got stuck re-scraping
+// 2026-09-01 and was retired 2026-09-08. Same column set as v2 (plus
+// source / source_row_hash / first_seen_at, which this API ignores).
+// verification_results' FK moved to v3 the same day (the table was empty).
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -91,7 +104,13 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 
 app.use('/api', requireAuth);
 
-const TARGET_COMMODITIES_PER_DAY = 585;
+// 605 real commodities in the full Agmarknet taxonomy (see
+// backend/data/agmarknet_commodities.json) — was 585 here, left over from
+// when market_prices' own scraper deduped commodities by a normalized
+// crop_keyword and silently collapsed 19 distinct ones sharing a name
+// prefix (e.g. Mango vs Mango(Raw-Ripe)) into one, undercounting the real
+// target. market_prices_v2's scraper doesn't dedupe that way.
+const TARGET_COMMODITIES_PER_DAY = 605;
 
 // Row -> frontend record shape (mirrors what mockData.js used to produce,
 // so the frontend's existing components don't need to change).
@@ -108,10 +127,16 @@ function toRecord(row) {
     district: row.district,
     market: row.market,
     commodity: row.commodity,
-    minPrice: row.min_price_quintal === null ? null : Number(row.min_price_quintal),
-    maxPrice: row.max_price_quintal === null ? null : Number(row.max_price_quintal),
-    modalPrice: row.modal_price_quintal === null ? null : Number(row.modal_price_quintal),
-    arrivalQty: row.arrival_qty === null ? null : Number(row.arrival_qty),
+    // Column names here are min_price/max_price/modal_price/arrival_quantity
+    // (not the old *_quintal/arrival_qty names) as of the 2026-08-31
+    // schema restructure — prices are stored exactly as the site reports
+    // them, no quintal normalization. This mapping was left reading the
+    // old names, which don't exist on either table anymore, so every
+    // record's prices/arrival qty were silently coming back NaN.
+    minPrice: row.min_price === null ? null : Number(row.min_price),
+    maxPrice: row.max_price === null ? null : Number(row.max_price),
+    modalPrice: row.modal_price === null ? null : Number(row.modal_price),
+    arrivalQty: row.arrival_quantity === null ? null : Number(row.arrival_quantity),
     arrivalUnit: row.arrival_unit,
     scrapedAt: row.scraped_at instanceof Date ? row.scraped_at.toISOString().slice(11, 16) : row.scraped_at,
     status: row.status || 'pending',
@@ -139,12 +164,12 @@ app.get('/api/overview', async (req, res) => {
              COUNT(DISTINCT district) AS districts, COUNT(DISTINCT market) AS markets,
              COUNT(DISTINCT commodity) AS commodities,
              MIN(arrival_date) AS min_date, MAX(arrival_date) AS max_date
-      FROM mandi.market_prices
+      FROM mandi.market_prices_v3
     `);
     const dupes = await pool.query(`
       SELECT COUNT(*) AS duplicate_groups FROM (
         SELECT state, district, market, commodity, arrival_date
-        FROM mandi.market_prices
+        FROM mandi.market_prices_v3
         GROUP BY state, district, market, commodity, arrival_date
         HAVING COUNT(*) > 1
       ) g
@@ -178,9 +203,13 @@ app.get('/api/overview', async (req, res) => {
 app.get('/api/completeness', async (req, res) => {
   try {
     const pool = await getPool();
+    // crop_keyword was dropped from the schema 2026-08-31 (see
+    // agmarknet_scraper.py's own schema comments) in favor of the raw
+    // commodity name — this query was left referencing the dropped
+    // column, which errored on every call.
     const result = await pool.query(`
-      SELECT CAST(arrival_date AS date) AS d, COUNT(DISTINCT crop_keyword) AS commodities, COUNT(*) AS rows_count
-      FROM mandi.market_prices GROUP BY CAST(arrival_date AS date) ORDER BY d
+      SELECT CAST(arrival_date AS date) AS d, COUNT(DISTINCT commodity) AS commodities, COUNT(*) AS rows_count
+      FROM mandi.market_prices_v3 GROUP BY CAST(arrival_date AS date) ORDER BY d
     `);
     res.json({
       dates: result.rows.map((r) => ({
@@ -198,7 +227,7 @@ app.get('/api/completeness', async (req, res) => {
 app.get('/api/filters/states', async (req, res) => {
   try {
     const pool = await getPool();
-    const result = await pool.query('SELECT DISTINCT state FROM mandi.market_prices ORDER BY state');
+    const result = await pool.query('SELECT DISTINCT state FROM mandi.market_prices_v3 ORDER BY state');
     res.json(result.rows.map((r) => r.state));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -209,7 +238,7 @@ app.get('/api/filters/districts', async (req, res) => {
   try {
     const pool = await getPool();
     const params = [];
-    let query = 'SELECT DISTINCT district FROM mandi.market_prices WHERE 1=1';
+    let query = 'SELECT DISTINCT district FROM mandi.market_prices_v3 WHERE 1=1';
     if (req.query.state && req.query.state !== 'All') {
       params.push(req.query.state);
       query += ` AND state = $${params.length}`;
@@ -226,7 +255,7 @@ app.get('/api/filters/markets', async (req, res) => {
   try {
     const pool = await getPool();
     const params = [];
-    let query = 'SELECT DISTINCT market FROM mandi.market_prices WHERE 1=1';
+    let query = 'SELECT DISTINCT market FROM mandi.market_prices_v3 WHERE 1=1';
     if (req.query.state && req.query.state !== 'All') {
       params.push(req.query.state);
       query += ` AND state = $${params.length}`;
@@ -252,7 +281,7 @@ app.get('/api/filters/commodity-groups', (req, res) => {
 app.get('/api/filters/commodities', async (req, res) => {
   try {
     const pool = await getPool();
-    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices ORDER BY commodity');
+    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices_v3 ORDER BY commodity');
     let commodities = result.rows.map((r) => r.commodity);
     const group = req.query.group;
     if (group && group !== 'All') {
@@ -271,7 +300,7 @@ app.get('/api/filters/commodities', async (req, res) => {
 app.get('/api/filters/commodity-coverage', async (req, res) => {
   try {
     const pool = await getPool();
-    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices');
+    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices_v3');
     const dbSet = new Set(result.rows.map((r) => String(r.commodity).toLowerCase()));
     const groups = Object.entries(COMMODITY_GROUPS).map(([group, commodities]) => {
       const missing = commodities.filter((c) => !dbSet.has(c.toLowerCase()));
@@ -291,10 +320,10 @@ const SORT_COLUMNS = {
   district: 'mp.district',
   market: 'mp.market',
   commodity: 'mp.commodity',
-  minPrice: 'mp.min_price_quintal',
-  maxPrice: 'mp.max_price_quintal',
-  modalPrice: 'mp.modal_price_quintal',
-  arrivalQty: 'mp.arrival_qty',
+  minPrice: 'mp.min_price',
+  maxPrice: 'mp.max_price',
+  modalPrice: 'mp.modal_price',
+  arrivalQty: 'mp.arrival_quantity',
   arrivalUnit: 'mp.arrival_unit',
 };
 
@@ -318,9 +347,10 @@ app.get('/api/records', async (req, res) => {
     if (market && market !== 'All') where += ` AND mp.market = ${addParam(market)}`;
     if (commodity && commodity !== 'All') where += ` AND mp.commodity = ${addParam(commodity)}`;
     if (commodityGroup && commodityGroup !== 'All') {
-      // No commodity_group column on mandi.market_prices — translate the
-      // group to its member commodity names via the reference taxonomy
-      // instead.
+      // market_prices_v2 does have a commodity_group column, but filtering
+      // through the reference taxonomy (as before) keeps group membership
+      // consistent with every other group-aware endpoint here regardless
+      // of what any one row's own commodity_group happens to say.
       const names = COMMODITY_GROUPS[commodityGroup] || [];
       if (names.length === 0) {
         where += ' AND 1=0';
@@ -343,7 +373,7 @@ app.get('/api/records', async (req, res) => {
       where += status === 'pending' ? ' AND vr.status IS NULL' : ` AND vr.status = ${addParam(status)}`;
     }
 
-    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM mandi.market_prices mp ${LATEST_VERIFICATION_JOIN} ${where}`, params);
+    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM mandi.market_prices_v3 mp ${LATEST_VERIFICATION_JOIN} ${where}`, params);
 
     const orderColumn = SORT_COLUMNS[sortBy] || SORT_COLUMNS.id;
     const orderDir = sortDir === 'desc' ? 'DESC' : 'ASC';
@@ -359,7 +389,7 @@ app.get('/api/records', async (req, res) => {
 
     const dataRes = await pool.query(`
       SELECT mp.*, vr.status, vr.notes, vr.verified_by, vr.verified_at
-      FROM mandi.market_prices mp
+      FROM mandi.market_prices_v3 mp
       ${LATEST_VERIFICATION_JOIN}
       ${where}
       ORDER BY ${orderBy}
@@ -383,7 +413,7 @@ app.get('/api/records/:id', async (req, res) => {
     const result = await pool.query(
       `
         SELECT mp.*, vr.status, vr.notes, vr.verified_by, vr.verified_at
-        FROM mandi.market_prices mp
+        FROM mandi.market_prices_v3 mp
         ${LATEST_VERIFICATION_JOIN}
         WHERE mp.market_price_id = $1::bigint
       `,
@@ -401,7 +431,7 @@ app.get('/api/records/:id/next-pending', async (req, res) => {
     const pool = await getPool();
     const query = `
       SELECT mp.market_price_id
-      FROM mandi.market_prices mp
+      FROM mandi.market_prices_v3 mp
       ${LATEST_VERIFICATION_JOIN}
       WHERE vr.status IS NULL AND mp.market_price_id > $1::bigint
       ORDER BY mp.market_price_id
@@ -445,7 +475,7 @@ app.get('/api/duplicates', async (req, res) => {
     const pool = await getPool();
     const groups = await pool.query(`
       SELECT state, district, market, commodity, arrival_date, COUNT(*) AS c
-      FROM mandi.market_prices
+      FROM mandi.market_prices_v3
       GROUP BY state, district, market, commodity, arrival_date
       HAVING COUNT(*) > 1
     `);
@@ -453,7 +483,7 @@ app.get('/api/duplicates', async (req, res) => {
     for (const g of groups.rows.slice(0, 50)) {
       const rows = await pool.query(
         `
-          SELECT * FROM mandi.market_prices
+          SELECT * FROM mandi.market_prices_v3
           WHERE state=$1 AND district=$2 AND market=$3 AND commodity=$4 AND arrival_date=$5
         `,
         [g.state, g.district, g.market, g.commodity, g.arrival_date]
@@ -473,7 +503,7 @@ app.get('/api/issues', async (req, res) => {
       SELECT vr.verification_id, vr.market_price_id, vr.status, vr.issue_type, vr.expected_value,
              vr.scraped_value, vr.notes, vr.verified_at, mp.state, mp.district, mp.market, mp.commodity
       FROM mandi.verification_results vr
-      JOIN mandi.market_prices mp ON mp.market_price_id = vr.market_price_id
+      JOIN mandi.market_prices_v3 mp ON mp.market_price_id = vr.market_price_id
       WHERE vr.status IN ('mismatch', 'missing', 'duplicate')
       ORDER BY vr.verified_at DESC
       LIMIT 200
