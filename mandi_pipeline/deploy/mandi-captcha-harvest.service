@@ -1,0 +1,27 @@
+# /etc/systemd/system/mandi-captcha-harvest.service
+# One-off-ish: harvests + self-labels CAPTCHAs for the trained model, then
+# exits when the target is reached. Yields to the production sweep. Enabled
+# so it resumes on boot; on-failure restart covers crashes.
+[Unit]
+Description=mandi_pipeline: harvest + self-label CAPTCHAs for the trained model
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+ExecStart=/home/azureuser/Web_Scraper/venv/bin/python -m mandi_pipeline.captcha_model.harvest --target 3000 --gap 3 --min-conf 0.85 --yield-to-sweep
+Restart=on-failure
+RestartSec=30
+Nice=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/captcha_model /opt/mandi_pipeline/mandi_pipeline/state
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# /etc/systemd/system/mandi-pipeline-datagovin.timer
+# Every 4 hours, offset from the AGMARKNET timer (which fires at :05).
+[Unit]
+Description=Run mandi_pipeline data.gov.in cycle every 4 hours
+
+[Timer]
+OnCalendar=*-*-* 00/4:35:00
+Persistent=true
+RandomizedDelaySec=120
+Unit=mandi-pipeline-datagovin.service
+
+[Install]
+WantedBy=timers.target

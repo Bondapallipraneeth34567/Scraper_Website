@@ -1,8 +1,65 @@
-# This repo is scoped to the QA dashboard app only (frontend/ + backend/).
-# Everything else in this folder (the WhatsApp/voice bot, service-account.json,
-# scraper, .env with unrelated secrets) is a separate project and must never
-# enter this repo's history.
-/*
-!/frontend
-!/backend
-!/.gitignore
+# ── Secrets — never commit ────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+*.pkcs12
+*.jks
+service-account.json
+service-account*.json
+*service-account*.json
+*serviceaccount*.json
+credentials.json
+*-credentials.json
+*.credentials
+*.secret
+secrets.*
+id_rsa*
+id_ed25519*
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ── Node / frontend ──────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# ── Runtime / generated state (regenerable, not source) ──────────────
+logs/
+*.log
+downloads/
+caller_memory/
+server_startup.log
+mandi_pipeline/state/
+mandi_pipeline/captcha_model/data/
+mandi_pipeline/captcha_model/*.pt
+mandi_pipeline/captcha_model/*.log
+
+# ── Local tooling / OS / editors ────────────────────────────────────
+.claude/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

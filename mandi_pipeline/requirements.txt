@@ -1,0 +1,17 @@
+# mandi_pipeline -- direct-API pipeline for AGMARKNET (Approach 1).
+# Deliberately NO browser automation: no playwright, no selenium, no
+# puppeteer, no pyppeteer. If any of those appear here, the "minimise
+# browser dependency" requirement has regressed.
+
+httpx[http2]==0.27.2        # HTTP/2 client, pooling, sane timeouts
+python-dotenv==1.0.1        # load .env on the VM
+loguru==0.7.2               # matches the existing scraper's logging
+psycopg[binary]==3.2.3      # sync Postgres driver
+
+# --- optional, feature-flagged ---
+# Needed for CAPTCHA_SOLVER in (easyocr | llm | llm_assisted_ocr):
+# easyocr==1.7.2                    # easyocr / llm_assisted_ocr
+# opencv-python-headless==4.10.0.84 # image preprocessing (falls back to PIL if absent)
+# numpy<2.0                         # easyocr compatibility
+# anthropic==0.39.0                 # CAPTCHA_SOLVER=llm / llm_assisted_ocr, or LLM_CLASSIFIER_ENABLED=true
+# azure-storage-blob==12.23.1       # BLOB_UPLOAD_ENABLED=true (mirror CSVs to Azure Blob)

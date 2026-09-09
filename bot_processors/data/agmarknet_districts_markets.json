@@ -1,0 +1,41 @@
+{
+  "Andaman and Nicobar": {
+    "South Andaman": [
+      "Bathubasti Vegetable Market",
+      "Perka Vegetable Market"
+    ]
+  },
+  "Andhra Pradesh": {
+    "YSR Kadapa": [
+      "Araku Valley APMC",
+      "Badvel APMC",
+      "Chintapally APMC",
+      "Jammalamadugu APMC",
+      "Kadapa",
+      "Kamalapuram APMC",
+      "Mydukur APMC",
+      "Paderu APMC",
+      "Proddatur APMC",
+      "Pulivendala APMC",
+      "Rajampet APMC",
+      "Siddavatam APMC",
+      "Simhadhripuram APMC",
+      "Yerraguntla APMC"
+    ]
+  },
+  "Arunachal Pradesh": {
+    "West Siang": [
+      "Along APMC",
+      "Miao APMC"
+    ]
+  },
+  "Assam": {
+    "West Siang": [
+      "Along APMC",
+      "Baharihat APMC",
+      "Barpeta Road APMC",
+      "Howly APMC",
+      "Mandia APMC"
+    ]
+  }
+}

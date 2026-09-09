@@ -1,0 +1,24 @@
+# /etc/systemd/system/mandi-pipeline-datagovin.service
+# One data.gov.in cycle (Approach 2). Triggered by its timer.
+[Unit]
+Description=mandi_pipeline data.gov.in cycle (Approach 2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+ExecStart=/opt/mandi_pipeline/venv/bin/python -m mandi_pipeline.datagovin.run --once --trigger timer
+TimeoutStartSec=30m
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/state
+
+[Install]
+WantedBy=multi-user.target

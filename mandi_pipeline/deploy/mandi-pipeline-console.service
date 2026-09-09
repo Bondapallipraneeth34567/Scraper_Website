@@ -1,0 +1,25 @@
+# /etc/systemd/system/mandi-pipeline-console.service
+# Long-running local web console the authorised human uses to solve a
+# paused CAPTCHA. Loopback-only; reach it over an SSH tunnel.
+[Unit]
+Description=mandi_pipeline CAPTCHA operator console
+After=network-online.target
+
+[Service]
+Type=simple
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+# See mandi-pipeline.service for why this reuses Web_Scraper/venv.
+ExecStart=/home/azureuser/Web_Scraper/venv/bin/python -m mandi_pipeline.operator_console
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/state
+
+[Install]
+WantedBy=multi-user.target

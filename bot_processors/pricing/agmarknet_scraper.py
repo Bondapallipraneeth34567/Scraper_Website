@@ -1,0 +1,1032 @@
+"""Drives the real agmarknet.gov.in "Daily Price and Arrival Report" page
+with a real (headless) browser — filling the same State/Commodity
+Group/Commodity dropdowns and clicking the same "Go" button a human would —
+and reads today's prices out of the rendered results table.
+
+scrape_all() is the background job: it's meant to be run periodically
+(bot_processors/pricing/scraper_daemon.py) and writes straight into the
+fact_market_prices table (db/schema.sql) — the same table
+bot_processors.pricing.price_lookup.fetch_price() queries from — so calls
+always see whatever this job most recently scraped. Nothing about what it
+scrapes is hand-picked: every state/UT (via the "All States/UTs" option)
+and every commodity (from load_commodity_reference(), harvested from the
+site's own dropdowns) is walked dynamically.
+
+scrape_single() is the live counterpart bot_processors.pricing.price_lookup
+calls mid-call for a cache miss (e.g. right after this file's own commodity
+reference was refreshed, before the next scrape_all() run has caught up):
+driving the same multi-step cascading form still takes several seconds, so
+this is only ever used as a one-time fetch for a combo not yet cached, with
+the result persisted afterward so subsequent callers get the cached fast
+path and scrape_all() keeps it fresh from then on.
+
+Run manually with:  python -m bot_processors.pricing.agmarknet_scraper
+"""
+
+import base64
+import json
+import msvcrt
+import os
+import time
+from datetime import date
+
+from dotenv import load_dotenv
+from loguru import logger
+from playwright.sync_api import Locator, Page, sync_playwright
+
+# db_pool.py reads DATABASE_URL from the environment at import time (a
+# top-level statement, not inside a function), so .env has to already be
+# loaded before the import right below this. Every other entry point that
+# imports this module (Bot.py, scraper_daemon.py, price_lookup.py) already
+# loads .env itself first, so this is a no-op there (load_dotenv() doesn't
+# override already-set vars by default) — it only matters for this file's
+# own standalone `python -m bot_processors.pricing.agmarknet_scraper` path,
+# which used to load .env too late, inside __main__, well after this import
+# had already run and left DATABASE_URL empty.
+load_dotenv()
+
+from bot_processors.core.db_pool import get_pool
+from bot_processors.paths import DATA_DIR
+from bot_processors.pricing.price_shared import _LAST_KNOWN_KEY_SEP, _LAST_KNOWN_PATH, crop_keyword_for
+
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+# Agmarknet started requiring a captcha on every "Go" submission (as of
+# 2026-07-31 — last_known_prices.json has real data up to 30-07-2026, then
+# every scrape that morning silently returned 0 rows because the query never
+# actually ran, rejected server-side for a missing/empty captcha field).
+# Solved with OCR rather than any external captcha-solving service, since the
+# image is a clean, low-noise 6-character alphanumeric render with no CAPTCHA
+# challenge beyond that. _ocr_reader is a lazy singleton because loading the
+# model is the expensive part (~seconds) and every Go click in a long run
+# reuses the same one.
+_CAPTCHA_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+_ocr_reader = None
+
+# The site shows this full-screen loading overlay after most dropdown/date
+# changes while it fetches the next field's options. If the Go click lands
+# while it's still up, Playwright's own actionability retry hammers the
+# click for its default 30s timeout before giving up — that's most of the
+# per-commodity time seen in production, not the captcha. Waiting for it to
+# detach first resolves in ~1-2s in the normal case; the explicit short
+# timeout on the click itself is only a fallback for the rare case where the
+# overlay never clears, so a stuck query fails in seconds instead of 30s and
+# hands off to scrape_all's existing per-commodity recovery sooner.
+_OVERLAY_SELECTOR = "div.fixed.inset-0.bg-black.bg-opacity-30.backdrop-blur-sm"
+_GO_CLICK_TIMEOUT_MS = 15000
+
+
+def _wait_overlay_gone(page: Page, timeout: int = 5000) -> None:
+    try:
+        page.locator(_OVERLAY_SELECTOR).wait_for(state="hidden", timeout=timeout)
+    except Exception:
+        pass
+
+
+def _get_ocr_reader():
+    global _ocr_reader
+    if _ocr_reader is None:
+        import easyocr
+
+        _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+    return _ocr_reader
+
+
+def _solve_captcha(page: Page) -> None:
+    """Reads the captcha's base64 image data straight off the <img> element
+    (no extra network round-trip) and fills its OCR reading into the
+    #captcha field. Not reliable on its own — see _click_go, which is the
+    real entry point and retries this against a freshly refreshed image on
+    rejection, since ambiguous glyphs (I/l/1, 0/O/9/g) mean a single OCR
+    pass gets it wrong more often than not."""
+    src = page.locator("img[alt='Captcha']").get_attribute("src")
+    _, b64data = src.split(",", 1)
+    image_bytes = base64.b64decode(b64data)
+
+    reader = _get_ocr_reader()
+    guess = "".join(reader.readtext(image_bytes, detail=0, allowlist=_CAPTCHA_ALPHABET))
+    page.fill("#captcha", guess)
+
+
+def _click_go(page: Page, max_attempts: int = 12) -> None:
+    """Solves the captcha and clicks Go, retrying against a freshly
+    refreshed captcha image whenever the site rejects the guess. The
+    #captcha input's own aria-invalid attribute is the accept/reject signal
+    — flips to "true" on a rejected submission and back to "false" once one
+    is accepted — confirmed more reliable than scraping for an error message
+    (observed via real testing: no visible error text reappears on repeat
+    rejections, only this attribute changes). OCR gets this captcha's
+    ambiguous 6-character glyphs right well under half the time, so
+    max_attempts is generously sized rather than tuned tight — a few extra
+    ~3s retries is cheap next to a query silently returning nothing."""
+    for attempt in range(max_attempts):
+        _solve_captcha(page)
+        _wait_overlay_gone(page)
+        page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+
+        # Rejection (aria-invalid flips to "true") and an accepted-with-rows
+        # response (a result row renders) usually resolve well under 2s —
+        # polling for either lets a fast response return early instead of
+        # always paying the full fixed wait. An accepted-but-genuinely-empty
+        # response has no earlier DOM signal to poll for, so it still falls
+        # back to the full 2000ms in that case, same as before.
+        try:
+            page.wait_for_function(
+                "() => document.querySelector('#captcha')?.getAttribute('aria-invalid') === 'true' "
+                "|| document.querySelectorAll('table tbody tr').length > 0",
+                timeout=2000,
+            )
+        except Exception:
+            pass
+
+        if page.locator("#captcha").get_attribute("aria-invalid") == "false":
+            return
+
+        logger.warning(
+            f"⚠️ agmarknet_scraper: captcha rejected (attempt {attempt + 1}/{max_attempts}), refreshing and retrying"
+        )
+        page.click("button[aria-label='Refresh captcha']")
+        page.wait_for_timeout(800)
+
+    logger.error(f"⚠️ agmarknet_scraper: captcha solving failed after {max_attempts} attempts, giving up on this query")
+
+
+def _open_dropdown(page: Page, label_text: str) -> Locator:
+    """Opens a cascading search-select dropdown by its label and returns its
+    trigger element, retrying until the search box actually appears.
+
+    Re-opening a field already picked earlier in the same page session (e.g.
+    switching State/UT from one state to the next, or Commodity Group from
+    one group to the next) sometimes toggles an already-open/stale panel
+    closed instead of opening it, leaving no search box on screen — this is
+    the retry this function exists for. Shared by _pick() (select one named
+    option) and _enumerate_dropdown_options() (read every option without
+    selecting any), since both need the panel open first.
+    """
+    trigger = page.locator(f"label:text-is('{label_text}')").locator("..")
+    search_box = page.locator("input[placeholder='Search...']")
+
+    for _ in range(5):
+        trigger.click(force=True)
+        page.wait_for_timeout(500)
+        if search_box.count() > 0 and search_box.last.is_visible():
+            return trigger
+    raise RuntimeError(f"agmarknet_scraper: dropdown for {label_text!r} never opened")
+
+
+def _enumerate_dropdown_options(page: Page, trigger: Locator) -> list[str]:
+    """Reads every option currently listed in an already-open dropdown panel
+    (see _open_dropdown), without selecting any of them. The panel is a
+    sibling of the trigger's own parent, not a descendant of the trigger
+    itself — confirmed by inspecting the live site's rendered DOM."""
+    outer = trigger.locator("..")
+    panel = outer.locator("div.absolute.top-full")
+    return panel.locator("div.py-1 > div").all_inner_texts()
+
+
+def _pick(page: Page, label_text: str, option_text: str) -> None:
+    """Opens a cascading search-select dropdown by its label, types the
+    option text into its search box, and clicks the matching option — same
+    interaction a caller filling the form by hand would perform.
+
+    Beyond the dropdown-never-opened failure _open_dropdown retries for,
+    a second independent flaky failure mode was found here, also silent (no
+    exception, no visible error) — a scraper run would just keep querying
+    the previous field's value: even once the search box is open and the
+    option is clicked, the click occasionally doesn't register with the
+    underlying React state (observed: trigger briefly showed both the old
+    and new value concatenated, e.g. "Andhra Pradesh Telang...", then
+    settled back on the OLD value) — so the form silently kept submitting
+    the previous selection. This produced 41 real cache entries scraped
+    under a "Telangana" key that were actually re-scraped Andhra Pradesh
+    rows. Fixed by reading the trigger's displayed text back after clicking
+    and retrying the whole open/search/click sequence if it doesn't contain
+    the value we just tried to select.
+    """
+    search_box = page.locator("input[placeholder='Search...']")
+
+    for attempt in range(3):
+        trigger = _open_dropdown(page, label_text)
+
+        box = search_box.last
+        box.fill(option_text)
+        page.wait_for_timeout(800)
+        page.locator(f"text='{option_text}'").last.click(force=True)
+        page.wait_for_timeout(600)
+
+        if option_text in trigger.inner_text():
+            return
+        logger.warning(
+            f"⚠️ agmarknet_scraper: {label_text!r} still doesn't show "
+            f"{option_text!r} after selecting it (attempt {attempt + 1}/3), retrying"
+        )
+
+    raise RuntimeError(
+        f"agmarknet_scraper: failed to select {option_text!r} for {label_text!r} after 3 attempts"
+    )
+
+
+def _scrape_visible_results_dynamic(page: Page) -> list[dict[str, str]]:
+    """Reads every row of the results table, paging through with the
+    "Next page" button (the site only ever offers 10 rows/page, no larger
+    page-size option) until it's disabled or absent. Reads column names from
+    the table's own header row rather than assuming a fixed layout — needed
+    for "Both" mode. The thead there has two rows: a grouping row
+    ("COMMODITY INFO" / "PRICE INFO" / "ARRIVAL INFO", 3 cells) above the
+    real per-column header row — only the last thead row's cell count
+    matches each body row's <td> count, so that's the one to read."""
+    rows: list[dict[str, str]] = []
+    table = page.locator("table")
+    if table.count() == 0:
+        return rows
+    headers = [
+        h.strip() or f"col_{i}"
+        for i, h in enumerate(table.locator("thead tr").last.locator("th").all_inner_texts())
+    ]
+
+    while True:
+        trs = table.locator("tbody tr")
+        for i in range(trs.count()):
+            cells = trs.nth(i).locator("td").all_inner_texts()
+            if len(cells) == len(headers):
+                rows.append(dict(zip(headers, (c.strip() for c in cells))))
+
+        next_btn = page.locator('button[title="Next page"]')
+        if next_btn.count() == 0 or next_btn.get_attribute("disabled") is not None:
+            break
+        next_btn.click()
+        page.wait_for_timeout(1000)
+    return rows
+
+
+def _row_to_result(row: dict[str, str]) -> dict | None:
+    """Converts one scraped table row into a last_known_prices.json entry.
+    scrape_all()/scrape_single() drive the form in "Both" mode (see
+    _open_daily_price_form), so `row` comes from the dynamic header-driven
+    reader (_scrape_visible_results_dynamic) and its keys are the site's own
+    column labels ("State/UT", "Min Price", ...).
+    Arrival Quantity/Unit are only added to the result when the site
+    actually reported a number for them — "NR" ("not reported") and blank
+    are both common and shouldn't produce a fake "0" arrival figure the bot
+    could speak as if it were real."""
+    unit = row["Price Unit"]
+    try:
+        min_price = float(row["Min Price"].replace(",", ""))
+        max_price = float(row["Max Price"].replace(",", ""))
+        modal_price = float(row["Modal Price"].replace(",", ""))
+    except ValueError:
+        return None
+
+    if "quintal" in unit.lower():
+        divisor = 100.0
+    elif "kg" in unit.lower():
+        divisor = 1.0
+    else:
+        logger.warning(f"⚠️ agmarknet_scraper: unrecognized price unit {unit!r}, skipping row")
+        return None
+
+    result = {
+        "commodity": row["Commodity"],
+        "market": row["Market"],
+        "district": row["District"],
+        "state": row["State/UT"],
+        "arrival_date": row["Price Date"],
+        "modal_per_kg": round(modal_price / divisor, 2),
+        "min_per_kg": round(min_price / divisor, 2),
+        "max_per_kg": round(max_price / divisor, 2),
+        "stale": False,
+    }
+
+    arrival_qty = row.get("Arrival Quantity", "").strip()
+    arrival_unit = row.get("Arrival Unit", "").strip()
+    if arrival_qty and arrival_qty.upper() != "NR":
+        result["arrival_qty"] = arrival_qty
+        result["arrival_unit"] = arrival_unit
+
+    return result
+
+
+def _install_date_override(page: Page, target_date: date) -> None:
+    """Rewrites the from_date/to_date the site's own "Go" query submits to
+    api.agmarknet.gov.in/v1/daily-price-arrival/report before it's sent.
+
+    The form itself has no date field — every query it fires hardcodes
+    both from_date and to_date to today (there's no picker to change them
+    from the UI at all) — but the backend honors whatever date the request
+    actually carries: overriding these to a past date (confirmed against
+    2026-08-09, mid-outage while the site itself only exposed today)
+    returned real rows dated that day, not today's. This is the only way
+    to query a day other than today, since nothing in the rendered page
+    offers it.
+
+    A no-op for target_date == today, so the normal scrape_all()/
+    scrape_single() call (today, implicitly) doesn't pay for rewriting a
+    request that would already carry the right dates."""
+    if target_date == date.today():
+        return
+
+    target_iso = target_date.strftime("%Y-%m-%d")
+
+    def handle(route, request):
+        if request.method != "POST":
+            route.continue_()
+            return
+        body = json.loads(request.post_data or "{}")
+        body["from_date"] = target_iso
+        body["to_date"] = target_iso
+        route.continue_(post_data=json.dumps(body))
+
+    page.route("**/daily-price-arrival/report", handle)
+
+
+def _open_daily_price_form(page: Page, mode: str = "Price") -> None:
+    """Navigation shared by every entry point that drives the live form:
+    scrape_all(), scrape_single(), and harvest_commodity_reference(). mode
+    is one of the "Price/Arrivals*" dropdown's own three options: "Price",
+    "Arrival", or "Both" (a combined table with both price and arrival
+    columns per row).
+
+    Goes straight to the form's own URL rather than clicking through the
+    homepage nav (as of 2026-08-10 that nav no longer has a "Price &
+    Arrival Reports" link — the site was restructured to a "Reports" hover
+    menu whose one live-report item's label includes that day's date, e.g.
+    "Daily Price and Arrival Report as on 11/August/2026", and is also
+    animated/unstable enough that Playwright's normal click needs `force`
+    to land — so the direct URL is both simpler and more robust than
+    reproducing that hover+force-click path)."""
+    page.goto(
+        "https://agmarknet.gov.in/daily-price-and-arrival-report",
+        wait_until="networkidle",
+        timeout=60000,
+    )
+    page.wait_for_timeout(3000)
+    _pick(page, "Price/Arrivals*", mode)
+
+
+def _scrape_state_crop(page: Page, state: str, group: str, commodity: str, crop_keyword: str) -> dict[str, dict]:
+    """Runs one (state, commodity) query against the already-open,
+    already-state-picked form and returns a "state||district||crop_keyword"
+    -> result dict for whichever districts had rows. Shared by scrape_all()
+    (loops this over every target) and scrape_single() (calls it once)."""
+    _pick(page, "Commodity Group*", group)
+    _pick(page, "Commodity*", commodity)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+    _click_go(page)
+    page.wait_for_timeout(500)
+
+    rows = _scrape_visible_results_dynamic(page)
+
+    # An empty result is sometimes a genuine "nothing reported today" (e.g.
+    # paddy/soyabean are out of season here in July) and sometimes just a
+    # transient site hiccup around the Go click — this exact (state, crop)
+    # combo has been observed to return 0 rows on one run and 10+ on the
+    # next with no code change in between. Re-clicking Go once (form fields
+    # are already correctly set, no need to re-pick them) filters out the
+    # transient case cheaply before accepting an empty result as real.
+    if not rows:
+        page.wait_for_timeout(1500)
+        _click_go(page)
+        page.wait_for_timeout(500)
+        rows = _scrape_visible_results_dynamic(page)
+
+    # Even with the State/UT picker now verified (see _pick), the results
+    # table itself has been observed to briefly carry over one stale row
+    # from the previous state's query after clicking Go — a render race,
+    # not a picker failure. Trust the row's own scraped "State/UT" cell over
+    # the state we intended to query, and drop anything that disagrees
+    # rather than let a stray row corrupt this state's cache entries (this
+    # is exactly how 41 Andhra Pradesh rows ended up saved under
+    # "Telangana" keys before this fix).
+    stray = [row for row in rows if row["State/UT"] != state]
+    if stray:
+        logger.warning(
+            f"⚠️ agmarknet_scraper: dropping {len(stray)} stale row(s) "
+            f"from a different state while querying {state}/{commodity}"
+        )
+    rows = [row for row in rows if row["State/UT"] == state]
+
+    logger.info(f"🌾 agmarknet_scraper: {state}/{commodity} -> {len(rows)} rows")
+
+    scraped: dict[str, dict] = {}
+    for row in rows:
+        result = _row_to_result(row)
+        if result is None:
+            continue
+        key = _LAST_KNOWN_KEY_SEP.join((state, result["district"], crop_keyword))
+        scraped.setdefault(key, result)
+    return scraped
+
+
+def _scrape_crop_all_states(page: Page, group: str, commodity: str, crop_keyword: str) -> dict[str, dict]:
+    """Runs one commodity query against the already-open form with
+    State/UT fixed to "All States/UTs" (picked once by scrape_all() before
+    looping crops), so a single query returns every state/UT's rows for
+    this commodity at once — replaces the old per-state loop entirely,
+    since there's no longer one specific state to filter stray rows
+    against. Keys each row by its own scraped state, not a requested one."""
+    _pick(page, "Commodity Group*", group)
+    _pick(page, "Commodity*", commodity)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(400)
+    _click_go(page)
+    page.wait_for_timeout(500)
+
+    rows = _scrape_visible_results_dynamic(page)
+    if not rows:
+        page.wait_for_timeout(1500)
+        _click_go(page)
+        page.wait_for_timeout(500)
+        rows = _scrape_visible_results_dynamic(page)
+
+    logger.info(f"🌾 agmarknet_scraper: {commodity} (all states) -> {len(rows)} rows")
+
+    scraped: dict[str, dict] = {}
+    for row in rows:
+        result = _row_to_result(row)
+        if result is None:
+            continue
+        key = _LAST_KNOWN_KEY_SEP.join((result["state"], result["district"], crop_keyword))
+        scraped.setdefault(key, result)
+    return scraped
+
+
+def scrape_all(resume: bool = False, target_date: date | None = None) -> dict[str, dict]:
+    """Runs every commodity Agmarknet tracks (~604, from
+    load_commodity_reference() — not a hand-picked list) against every
+    state/UT at once (via the "All States/UTs" option, one query per
+    commodity rather than one per state x commodity) and returns a
+    "state||district||crop_keyword" -> result dict of everything scraped
+    this call. crop_keyword is derived the same way bot_processors.pricing.price_lookup
+    derives it when resolving a caller's spoken commodity (see
+    price_shared.crop_keyword_for) so a live call's lookup key always
+    matches what this just wrote. One row per key is kept (first seen
+    wins) — good enough for an approximate fallback price, not exact
+    market analytics.
+
+    target_date defaults to today (the only date the site's own form ever
+    queries). Pass a past date to backfill it instead — see
+    _install_date_override for how that's actually done (the rendered form
+    has no date field at all; the override rewrites the request the "Go"
+    click fires, underneath the UI).
+
+    Drives the form in "Both" mode (price + arrival columns in one query)
+    so each cached entry also gets arrival_qty/arrival_unit alongside the
+    existing per-kg price fields, when the site reported one — see
+    _row_to_result.
+
+    Persists to last_known_prices.json after each commodity (via
+    save_scraped), not just once at the end — a full run is ~604 form
+    submissions and can take hours, and a mid-run crash used to lose the
+    entire run's progress since nothing was written until scrape_all()
+    returned. A single commodity's dropdown pick failing is logged and
+    skipped (form reopened and re-picked to recover) rather than aborting
+    the whole run.
+
+    resume=True skips any crop_keyword that already has at least one entry
+    dated target_date in last_known_prices.json — for relaunching after a
+    crash without re-querying commodities this run already got to. Not the
+    default: the scheduled daemon (scraper_daemon.py) wants every cycle to
+    be a full unconditional refresh, not skip a commodity just because an
+    earlier cycle already touched it."""
+    target_date = target_date or date.today()
+    targets: dict[str, tuple[str, str]] = {}
+    for group, commodities in load_commodity_reference().items():
+        for commodity in commodities:
+            targets[crop_keyword_for(commodity)] = (group, commodity)
+
+    target_date_str = target_date.strftime("%d-%m-%Y")
+    done_today: set[str] = set()
+    if resume and _LAST_KNOWN_PATH.exists():
+        existing = json.loads(_LAST_KNOWN_PATH.read_text(encoding="utf-8"))
+        for key, entry in existing.items():
+            if entry.get("arrival_date") == target_date_str:
+                done_today.add(key.split(_LAST_KNOWN_KEY_SEP)[-1])
+        if done_today:
+            logger.info(
+                f"⏭️ agmarknet_scraper: resuming — {len(done_today)}/{len(targets)} "
+                f"commodities already have {target_date_str}'s data"
+            )
+
+    scraped: dict[str, dict] = {}
+    done_count = len(done_today)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--ignore-certificate-errors"])
+        page = browser.new_page(
+            viewport={"width": 1400, "height": 1000},
+            ignore_https_errors=True,
+            user_agent=_USER_AGENT,
+        )
+        _install_date_override(page, target_date)
+        _open_daily_price_form(page, mode="Both")
+        _pick(page, "State/UT*", "All States/UTs")
+
+        for crop_keyword, (group, commodity) in targets.items():
+            if crop_keyword in done_today:
+                continue
+
+            try:
+                commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+            except Exception:
+                logger.opt(exception=True).warning(
+                    f"⚠️ agmarknet_scraper: failed on {group}/{commodity}, reloading form and skipping"
+                )
+                try:
+                    _open_daily_price_form(page, mode="Both")
+                    _pick(page, "State/UT*", "All States/UTs")
+                except Exception:
+                    logger.opt(exception=True).error(
+                        "⚠️ agmarknet_scraper: form recovery failed, aborting run"
+                    )
+                    raise
+                continue
+
+            scraped.update(commodity_scraped)
+            if commodity_scraped:
+                # JSON-only checkpoint (see _merge_into_last_known_json's
+                # docstring) -- NOT save_scraped() itself, which is async
+                # and would silently no-op here since this loop has no
+                # event loop to await it into.
+                _merge_into_last_known_json(commodity_scraped)
+            done_count += 1
+            logger.info(f"📊 agmarknet_scraper: {done_count}/{len(targets)} commodities done")
+            time.sleep(1.5)  # be polite between form submissions
+
+        browser.close()
+
+    return scraped
+
+
+def scrape_single(state: str, group: str, commodity: str, crop_keyword: str) -> dict[str, dict]:
+    """Live, on-demand equivalent of one (state, crop) iteration of
+    scrape_all() — launches its own short-lived browser session so it can
+    run mid-call without waiting for or interfering with the scheduled
+    background job. District stays "All Districts" same as scrape_all(), so
+    one call still covers every district in the state, not just the
+    caller's own. Takes several seconds (browser launch + one form
+    submission) — meant to be awaited from an async context via
+    asyncio.to_thread, not called directly from an event loop."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--ignore-certificate-errors"])
+        page = browser.new_page(
+            viewport={"width": 1400, "height": 1000},
+            ignore_https_errors=True,
+            user_agent=_USER_AGENT,
+        )
+        _open_daily_price_form(page, mode="Both")
+        _pick(page, "State/UT*", state)
+        result = _scrape_state_crop(page, state, group, commodity, crop_keyword)
+        browser.close()
+    return result
+
+
+# Full Agmarknet commodity taxonomy (group -> [commodity, ...]), harvested
+# once from the site's own Commodity Group/Commodity dropdowns rather than
+# hand-picked — see harvest_commodity_reference(). Used by
+# bot_processors.pricing.price_lookup to recognize a commodity outside the
+# original 13 when the caller names it in English or a common loanword.
+_COMMODITY_REFERENCE_PATH = DATA_DIR / "agmarknet_commodities.json"
+
+
+def harvest_commodity_reference() -> dict[str, list[str]]:
+    """Walks every Commodity Group and, for each, every Commodity inside it,
+    reading the dropdown's own rendered option list rather than assuming any
+    fixed set — so this stays correct if Agmarknet adds/renames commodities,
+    without another round of manual hardcoding. Takes roughly a minute (16
+    groups today); meant to be run occasionally (see scraper_daemon.py),
+    not on every scrape."""
+    reference: dict[str, list[str]] = {}
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--ignore-certificate-errors"])
+        page = browser.new_page(
+            viewport={"width": 1400, "height": 1000},
+            ignore_https_errors=True,
+            user_agent=_USER_AGENT,
+        )
+        _open_daily_price_form(page)
+
+        group_trigger = _open_dropdown(page, "Commodity Group*")
+        groups = _enumerate_dropdown_options(page, group_trigger)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+
+        for group in groups:
+            _pick(page, "Commodity Group*", group)
+            commodity_trigger = _open_dropdown(page, "Commodity*")
+            commodities = _enumerate_dropdown_options(page, commodity_trigger)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            reference[group] = commodities
+            logger.info(f"📚 agmarknet_scraper: {group} -> {len(commodities)} commodities")
+
+        browser.close()
+
+    _COMMODITY_REFERENCE_PATH.write_text(
+        json.dumps(reference, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info(
+        f"💾 agmarknet_scraper: wrote {sum(len(v) for v in reference.values())} "
+        f"commodities across {len(reference)} groups to {_COMMODITY_REFERENCE_PATH}"
+    )
+    return reference
+
+
+def load_commodity_reference() -> dict[str, list[str]]:
+    if not _COMMODITY_REFERENCE_PATH.exists():
+        return {}
+    return json.loads(_COMMODITY_REFERENCE_PATH.read_text(encoding="utf-8"))
+
+
+# Full list of State/UT options Agmarknet's own dropdown offers, harvested
+# once rather than hand-typed — see harvest_state_reference(). Unlike the
+# commodity reference this is small and effectively permanent (India's
+# states/UTs don't change often), but harvesting it the same way keeps it
+# exactly in sync with the site's own spelling (the form only accepts one
+# of these exact strings). Used by bot_processors.pricing.price_lookup to resolve
+# whatever state name a caller (or the LLM inferring one) gives, without a
+# hand-maintained alias table.
+_STATE_REFERENCE_PATH = DATA_DIR / "agmarknet_states.json"
+
+
+def harvest_state_reference() -> list[str]:
+    """Walks the State/UT dropdown's own rendered option list once. Takes
+    well under a minute — one dropdown, not a cascading walk like
+    harvest_commodity_reference()."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--ignore-certificate-errors"])
+        page = browser.new_page(
+            viewport={"width": 1400, "height": 1000},
+            ignore_https_errors=True,
+            user_agent=_USER_AGENT,
+        )
+        _open_daily_price_form(page)
+        state_trigger = _open_dropdown(page, "State/UT*")
+        states = _enumerate_dropdown_options(page, state_trigger)
+        page.keyboard.press("Escape")
+        browser.close()
+
+    _STATE_REFERENCE_PATH.write_text(
+        json.dumps(states, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info(f"💾 agmarknet_scraper: wrote {len(states)} states/UTs to {_STATE_REFERENCE_PATH}")
+    return states
+
+
+def load_state_reference() -> list[str]:
+    if not _STATE_REFERENCE_PATH.exists():
+        return []
+    return json.loads(_STATE_REFERENCE_PATH.read_text(encoding="utf-8"))
+
+
+def _open_dropdown_scoped(page: Page, label_text: str) -> tuple[Locator, Locator]:
+    """Field-scoped variant of _open_dropdown(), for District/Market only —
+    see harvest_district_market_reference()'s docstring for why these two
+    fields can't safely share _open_dropdown/_pick with the rest of this
+    file. Returns (trigger, container) — container is the field's own
+    wrapper (trigger's parent), scoped to hold the search box lookup
+    below the way _enumerate_dropdown_options() already scopes its own
+    panel lookup ("the panel is a sibling of the trigger's own parent, not
+    a descendant of the trigger itself")."""
+    trigger = page.locator(f"label:text-is('{label_text}')").locator("..")
+    container = trigger.locator("..")
+    search_box = container.locator("input[placeholder='Search...']")
+
+    for _ in range(5):
+        trigger.click(force=True)
+        page.wait_for_timeout(500)
+        if search_box.count() > 0 and search_box.last.is_visible():
+            return trigger, container
+    raise RuntimeError(f"agmarknet_scraper: dropdown for {label_text!r} never opened")
+
+
+def _pick_scoped(page: Page, label_text: str, option_text: str) -> None:
+    """Field-scoped variant of _pick(), for District/Market only.
+
+    _pick()/_open_dropdown() locate the option's search box via a bare
+    page.locator("input[placeholder='Search...']").last — a page-wide
+    match across every dropdown's search box, not scoped to the field
+    actually being opened. That's harmless for every field the rest of
+    this file scripts (Price/Arrivals*, Commodity Group*, Commodity*,
+    State/UT*), because State/UT* used to be the last such field in the
+    form's DOM order, so ".last" always happened to resolve to the field
+    just opened. District and Market sit after State/UT* in the DOM —
+    picking "District" this way can silently resolve to Market's own
+    (closed) search box instead, which explains the harvest's real-world
+    failure pattern: district enumeration (_enumerate_dropdown_options,
+    which locates via the trigger it's already holding, not ".last") read
+    every district name correctly, but _pick()'s re-selection of that same
+    district failed almost every time. Scoping every lookup to this
+    field's own container instead of the whole page is what fixes that.
+
+    Also more patient than _pick() (5 attempts and longer waits, not 3) —
+    District/Market are newly-scripted fields with no track record of the
+    hardening scrape_all()'s existing fields have from real production
+    runs, and this harvest is a long, resumable, one-off job where an
+    extra few seconds of retrying costs nothing."""
+    for attempt in range(1, 6):
+        trigger, container = _open_dropdown_scoped(page, label_text)
+        box = container.locator("input[placeholder='Search...']").last
+        box.fill(option_text)
+        page.wait_for_timeout(900)
+        container.locator(f"text='{option_text}'").last.click(force=True)
+        page.wait_for_timeout(700)
+
+        if option_text in trigger.inner_text():
+            return
+        logger.warning(
+            f"⚠️ agmarknet_scraper: {label_text!r} still doesn't show "
+            f"{option_text!r} after selecting it (attempt {attempt}/5), retrying"
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+
+    raise RuntimeError(
+        f"agmarknet_scraper: failed to select {option_text!r} for {label_text!r} after 5 attempts"
+    )
+
+
+# Full state -> district -> [market, ...] taxonomy, harvested from the same
+# form's "District" and "Market" fields (both present alongside State/UT,
+# Commodity Group and Commodity — see _open_daily_price_form's docstring;
+# neither is ever picked by the scraping path itself, which always leaves
+# District at its "All Districts" default so one query covers every
+# district in a state at once). Nothing else in this file reads these two
+# fields, so this is purely a reference-data harvest for comparing against
+# dbo.MarketPrices' real coverage (see the verification dashboard's
+# /api/filters/commodity-coverage for the equivalent on the commodity side)
+# — not used by scrape_all()/scrape_single().
+_DISTRICT_MARKET_REFERENCE_PATH = DATA_DIR / "agmarknet_districts_markets.json"
+
+
+def harvest_district_market_reference() -> dict[str, dict[str, list[str]]]:
+    """Walks every state's District dropdown and, for each district inside
+    it, that district's Market dropdown — same "read the dropdown's own
+    rendered options" approach as harvest_commodity_reference(), just one
+    level deeper (state -> district -> market instead of group ->
+    commodity). With ~36 states and ~600 districts total this is a much
+    longer walk than the commodity harvest (expect on the order of an hour,
+    not a minute) and hits a live government site the rest of this file's
+    own comments already document as flaky (stale renders, silent click
+    failures, transient empty results) — so unlike the commodity/state
+    harvesters, this one tolerates a single state or district failing
+    outright (logs and moves on) rather than letting one bad pick abort the
+    entire run, and writes its progress to disk after every state so a
+    crash partway through doesn't lose everything already harvested.
+    Re-running is safe and resumes coverage rather than starting over: any
+    state already present in the on-disk reference is skipped."""
+    reference: dict[str, dict[str, list[str]]] = {}
+    if _DISTRICT_MARKET_REFERENCE_PATH.exists():
+        reference = json.loads(_DISTRICT_MARKET_REFERENCE_PATH.read_text(encoding="utf-8"))
+
+    states = [s for s in load_state_reference() if s != "All States/UTs"]
+    if not states:
+        states = [s for s in harvest_state_reference() if s != "All States/UTs"]
+
+    def _save() -> None:
+        _DISTRICT_MARKET_REFERENCE_PATH.write_text(
+            json.dumps(reference, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--ignore-certificate-errors"])
+        page = browser.new_page(
+            viewport={"width": 1400, "height": 1000},
+            ignore_https_errors=True,
+            user_agent=_USER_AGENT,
+        )
+        _open_daily_price_form(page)
+
+        for state in states:
+            # An empty dict means every district in that state failed last
+            # run (see the district loop below) — not a real "done", so
+            # don't let it block a retry the way a genuinely populated
+            # entry should.
+            if reference.get(state):
+                logger.info(f"📚 agmarknet_scraper: {state} already harvested, skipping")
+                continue
+            try:
+                _pick_scoped(page, "State/UT*", state)
+                district_trigger, _ = _open_dropdown_scoped(page, "District")
+                districts = [
+                    d for d in _enumerate_dropdown_options(page, district_trigger)
+                    if not d.lower().startswith("all ")
+                ]
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+            except Exception:
+                logger.exception(f"⚠️ agmarknet_scraper: failed reading districts for {state}, skipping state")
+                continue
+
+            state_districts: dict[str, list[str]] = {}
+            for district in districts:
+                try:
+                    _pick_scoped(page, "District", district)
+                    market_trigger, _ = _open_dropdown_scoped(page, "Market")
+                    markets = [
+                        m for m in _enumerate_dropdown_options(page, market_trigger)
+                        if not m.lower().startswith("all ")
+                    ]
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(500)
+                    state_districts[district] = markets
+                except Exception:
+                    logger.exception(
+                        f"⚠️ agmarknet_scraper: failed reading markets for {state}/{district}, skipping district"
+                    )
+
+            reference[state] = state_districts
+            total_markets = sum(len(v) for v in state_districts.values())
+            logger.info(
+                f"📚 agmarknet_scraper: {state} -> {len(state_districts)} districts, "
+                f"{total_markets} markets"
+            )
+            _save()
+
+        browser.close()
+
+    logger.info(
+        f"💾 agmarknet_scraper: wrote {len(reference)} states to {_DISTRICT_MARKET_REFERENCE_PATH}"
+    )
+    return reference
+
+
+def load_district_market_reference() -> dict[str, dict[str, list[str]]]:
+    if not _DISTRICT_MARKET_REFERENCE_PATH.exists():
+        return {}
+    return json.loads(_DISTRICT_MARKET_REFERENCE_PATH.read_text(encoding="utf-8"))
+
+
+_LAST_KNOWN_LOCK_PATH = _LAST_KNOWN_PATH.with_suffix(".lock")
+
+
+def _merge_into_last_known_json(scraped: dict[str, dict]) -> None:
+    """The JSON-only half of save_scraped(), split out so scrape_all()'s
+    per-commodity incremental checkpoint (see its docstring) can call it
+    directly — scrape_all() runs synchronous Playwright code with no event
+    loop to await save_scraped()'s DB half into. Calling save_scraped()
+    itself there would silently no-op (an un-awaited coroutine is just
+    created and discarded, not run), which is exactly the bug this split
+    fixes: it used to make scrape_all(resume=True)'s "already done today"
+    detection see nothing, because last_known_prices.json was never
+    actually updated mid-run despite the docstring's claim that it was.
+
+    Locked (via an exclusive OS lock on a sidecar .lock file) and written
+    atomically (temp file + os.replace, never an in-place write) — this
+    function runs on every single commodity scraped, hundreds of times over
+    a multi-hour run, so with two backfill dates running concurrently a
+    collision here isn't a rare edge case, it's near-certain. Confirmed
+    live (2026-08-13): running 2026-08-02 and 2026-08-03 in parallel with
+    no locking here, their unsynchronized read-modify-write cycles
+    eventually interleaved, leaving a dangling half-written JSON fragment
+    appended after an otherwise-valid file. Every subsequent read anywhere
+    (both those runs' remaining retry attempts, and 2026-08-01 and
+    2026-08-12's runs right after) then crashed on the corrupt file with an
+    uncaught JSONDecodeError — silently discarding an entire night's worth
+    of otherwise-successful scraping with zero rows actually saved for any
+    of the four affected dates, since this crash happens before
+    scrape_all() ever reaches its own save_scraped() DB write."""
+    if not scraped:
+        return
+    lock_path = _LAST_KNOWN_LOCK_PATH
+    lock_path.touch(exist_ok=True)
+    with open(lock_path, "r+b") as lock_file:
+        while True:
+            try:
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        try:
+            existing: dict[str, dict] = {}
+            if _LAST_KNOWN_PATH.exists():
+                existing = json.loads(_LAST_KNOWN_PATH.read_text(encoding="utf-8"))
+            existing.update(scraped)
+            tmp_path = _LAST_KNOWN_PATH.with_suffix(".json.tmp")
+            tmp_path.write_text(
+                json.dumps(dict(sorted(existing.items())), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            os.replace(tmp_path, _LAST_KNOWN_PATH)
+        finally:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+async def save_scraped(scraped: dict[str, dict]) -> None:
+    """Upserts freshly scraped results into fact_market_prices (db/schema.sql)
+    — one row per (state, district, crop_keyword, arrival_date) — which is
+    now the bot's own price lookup source of truth (bot_processors.pricing.price_lookup
+    queries it directly; last_known_prices.json is retired as a read path).
+    A same-day re-scrape (same arrival_date) updates that day's row via ON
+    CONFLICT; any other day's arrival_date is a genuinely new row, so real
+    history accumulates instead of being discarded the way the old
+    JSON-overwrite approach did — see the table's own comment in
+    db/schema.sql. The INSERT below names the public schema explicitly
+    (not a bare fact_market_prices) for the same reason price_lookup.py's
+    queries do — see fetch_price()'s docstring — since this function is
+    also called from price_lookup.py's live-fetch fallback, which on a
+    schema-isolated test deployment would otherwise save a freshly-scraped
+    row where no read path (now pinned to public too) would ever see it.
+
+    Still ALSO writes last_known_prices.json (via _merge_into_last_known_json)
+    — not for price lookups anymore, but because enrich_prices_with_geo.py
+    and export_prices_xlsx.py both read/write that exact file for their own
+    separate jobs (geo-coordinate enrichment for
+    bot_processors/location/location_lookup.py's nearby-market search, and
+    the human-readable xlsx snapshot) and haven't been migrated to the DB.
+    Dropping this write would silently freeze both of those on stale data
+    with no error to notice it by — revisit only once those two are
+    migrated too.
+
+    Requires bot_processors.core.db_pool.init_pool() to already have run in this
+    process — true for the bot itself (Bot.py's main()) and for
+    scraper_daemon.py (calls it once at startup, see run_forever())."""
+    if not scraped:
+        return
+
+    _merge_into_last_known_json(scraped)
+
+    pool = get_pool()
+    rows = []
+    for key, result in scraped.items():
+        state, district, crop_keyword = key.split(_LAST_KNOWN_KEY_SEP)
+        # arrival_qty comes straight from the site's own rendered text
+        # (_row_to_result) and can carry a thousands separator on larger
+        # quantities, e.g. "1,024.00" — float() rejects that outright.
+        arrival_qty = result.get("arrival_qty")
+        rows.append((
+            state, district, result["market"], result["commodity"], crop_keyword,
+            result["arrival_date"], result["modal_per_kg"], result["min_per_kg"],
+            result["max_per_kg"], float(arrival_qty.replace(",", "")) if arrival_qty else None,
+            result.get("arrival_unit"),
+        ))
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO public.fact_market_prices
+                (state, district, market, commodity, crop_keyword, arrival_date,
+                 modal_per_kg, min_per_kg, max_per_kg, arrival_qty, arrival_unit)
+            VALUES ($1, $2, $3, $4, $5, to_date($6, 'DD-MM-YYYY'), $7, $8, $9, $10, $11)
+            ON CONFLICT (state, district, crop_keyword, arrival_date) DO UPDATE SET
+                market = EXCLUDED.market,
+                commodity = EXCLUDED.commodity,
+                modal_per_kg = EXCLUDED.modal_per_kg,
+                min_per_kg = EXCLUDED.min_per_kg,
+                max_per_kg = EXCLUDED.max_per_kg,
+                arrival_qty = EXCLUDED.arrival_qty,
+                arrival_unit = EXCLUDED.arrival_unit,
+                scraped_at = NOW()
+            """,
+            rows,
+        )
+    logger.info(
+        f"💾 agmarknet_scraper: upserted {len(scraped)} fresh entries into fact_market_prices "
+        f"(and last_known_prices.json, for enrich_prices_with_geo.py/export_prices_xlsx.py)"
+    )
+
+
+if __name__ == "__main__":
+    import asyncio
+    import sys
+
+    # .env is already loaded at module import time (see load_dotenv() call
+    # up top) — nothing else needed here for that.
+    from bot_processors.core.db_pool import close_pool, init_pool
+
+    if "--harvest-commodities" in sys.argv:
+        harvest_commodity_reference()
+    elif "--harvest-states" in sys.argv:
+        harvest_state_reference()
+    elif "--harvest-districts-markets" in sys.argv:
+        harvest_district_market_reference()
+    else:
+        # --date=YYYY-MM-DD backfills that specific past day instead of
+        # today (see scrape_all's target_date / _install_date_override) —
+        # the site's own form has no date field, so this is otherwise
+        # unreachable from the UI.
+        target_date = None
+        for arg in sys.argv[1:]:
+            if arg.startswith("--date="):
+                target_date = date.fromisoformat(arg.split("=", 1)[1])
+
+        async def _run():
+            await init_pool()
+            try:
+                # scrape_all() is sync (drives a real sync_playwright
+                # browser) and Playwright's sync API refuses to run inside
+                # a thread that already has an active asyncio loop — same
+                # reason scraper_daemon.py awaits it via to_thread rather
+                # than calling it directly.
+                scraped = await asyncio.to_thread(
+                    scrape_all, resume="--resume" in sys.argv, target_date=target_date
+                )
+                await save_scraped(scraped)
+            finally:
+                await close_pool()
+
+        asyncio.run(_run())

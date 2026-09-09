@@ -1,0 +1,15 @@
+# /etc/systemd/system/mandi-pipeline.timer
+# Fire the sweep every 4 hours. The sweep itself is resumable and holds a
+# single-instance lock, so if a run is still going when the next tick
+# arrives it simply records status=skipped_locked and exits.
+[Unit]
+Description=Run mandi_pipeline sweep every 4 hours
+
+[Timer]
+OnCalendar=*-*-* 00/4:05:00
+Persistent=true
+RandomizedDelaySec=180
+Unit=mandi-pipeline.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,1029 @@
+2026-08-10 17:29:04.167 | INFO     | bot_processors.core.db_pool:init_pool:28 - [db_pool] PostgreSQL connection pool created
+2026-08-10 17:29:04.200 | INFO     | __main__:run_forever:52 - â° scraper_daemon: starting scrape run
+2026-08-10 17:29:39.313 | ERROR    | __main__:run_forever:81 - âŒ scraper_daemon: scrape run failed:
+Traceback (most recent call last):
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\scraper_daemon.py", line 56, in run_forever
+    scraped = await asyncio.to_thread(scrape_all)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 461, in scrape_all
+    _open_daily_price_form(page, mode="Both")
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 306, in _open_daily_price_form
+    page.click("text=Price & Arrival Reports")
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("text=Price & Arrival Reports")
+
+
+2026-08-10 17:29:39.342 | INFO     | __main__:run_forever:82 - ðŸ’¤ scraper_daemon: sleeping 28800s until next run
+2026-08-11 10:24:14.159 | INFO     | bot_processors.core.db_pool:init_pool:28 - [db_pool] PostgreSQL connection pool created
+2026-08-11 10:24:14.175 | INFO     | __main__:run_forever:52 - \u23f0 scraper_daemon: starting scrape run
+2026-08-11 10:24:55.381 | ERROR    | __main__:run_forever:81 - \u274c scraper_daemon: scrape run failed:
+Traceback (most recent call last):
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\scraper_daemon.py", line 56, in run_forever
+    scraped = await asyncio.to_thread(scrape_all)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 461, in scrape_all
+    _open_daily_price_form(page, mode="Both")
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 306, in _open_daily_price_form
+    page.click("text=Price & Arrival Reports")
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("text=Price & Arrival Reports")
+
+
+2026-08-11 10:24:55.381 | INFO     | __main__:run_forever:82 - \U0001f4a4 scraper_daemon: sleeping 28800s until next run
+2026-08-11 18:29:04.307 | INFO     | __main__:run_forever:52 - \u23f0 scraper_daemon: starting scrape run
+2026-08-11 18:29:44.215 | ERROR    | __main__:run_forever:81 - \u274c scraper_daemon: scrape run failed:
+Traceback (most recent call last):
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\scraper_daemon.py", line 56, in run_forever
+    bare attempt isn't reliable for a full ~585-commodity run, for today's
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 461, in scrape_all
+    this call. crop_keyword is derived the same way bot_processors.pricing.price_lookup
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 306, in _open_daily_price_form
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("text=Price & Arrival Reports")
+
+
+2026-08-11 18:29:44.216 | INFO     | __main__:run_forever:82 - \U0001f4a4 scraper_daemon: sleeping 28800s until next run
+2026-08-12 09:25:37.831 | INFO     | bot_processors.core.db_pool:init_pool:28 - [db_pool] PostgreSQL connection pool created
+2026-08-12 09:25:37.927 | INFO     | __main__:run_forever:109 - \u23f0 scraper_daemon: starting scrape run
+C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+  w_ih = torch.quantize_per_tensor(
+C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+2026-08-12 09:26:36.281 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:26:43.068 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:26:44.941 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 2/12), refreshing and retrying
+2026-08-12 09:26:49.098 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Chicory(Chikori/Kasni) (all states) -> 0 rows
+2026-08-12 09:26:49.098 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 1/585 commodities done
+2026-08-12 09:27:00.754 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:27:04.869 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Cocoa (all states) -> 0 rows
+2026-08-12 09:27:04.869 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 2/585 commodities done
+2026-08-12 09:27:16.606 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:27:18.382 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 2/12), refreshing and retrying
+2026-08-12 09:27:20.209 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 3/12), refreshing and retrying
+2026-08-12 09:27:24.264 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Coffee (all states) -> 0 rows
+2026-08-12 09:27:24.264 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 3/585 commodities done
+2026-08-12 09:27:38.492 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Green Tea (all states) -> 0 rows
+2026-08-12 09:27:38.492 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 4/585 commodities done
+2026-08-12 09:28:09.832 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Beverages/Tea, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'tea'
+                        |                       |     |      -> 'Tea'
+                        |                       |     -> 'Beverages'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-265' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:28:24.826 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Bajra(Pearl Millet/Cumbu) (all states) -> 1 rows
+2026-08-12 09:28:25.176 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 5/585 commodities done
+2026-08-12 09:28:39.089 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Barley(Jau) (all states) -> 0 rows
+2026-08-12 09:28:39.089 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 6/585 commodities done
+2026-08-12 09:28:46.735 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:29:12.983 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Barnyard Millet, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'barnyard_millet'
+                        |                       |     |      -> 'Barnyard Millet'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-399' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:29:33.966 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Basmati Rice (all states) -> 0 rows
+2026-08-12 09:29:33.966 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 7/585 commodities done
+2026-08-12 09:30:05.276 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Beaten Rice, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'beaten_rice'
+                        |                       |     |      -> 'Beaten Rice'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-489' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:30:30.404 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:30:34.500 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Bejhar (all states) -> 0 rows
+2026-08-12 09:30:34.500 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 8/585 commodities done
+2026-08-12 09:30:41.457 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:31:07.399 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Broken Rice, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'broken_rice'
+                        |                       |     |      -> 'Broken Rice'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-595' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:31:46.078 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Browntop Millet, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'browntop_millet'
+                        |                       |     |      -> 'Browntop Millet'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-648' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:32:24.572 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Chakhao(Black Rice), reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'chakhao'
+                        |                       |     |      -> 'Chakhao(Black Rice)'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-701' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:32:45.458 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Foxtail Millet(Navane) (all states) -> 0 rows
+2026-08-12 09:32:45.458 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 9/585 commodities done
+2026-08-12 09:32:52.430 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:33:18.448 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Hybrid Cumbu, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'hybrid_cumbu'
+                        |                       |     |      -> 'Hybrid Cumbu'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-799' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:33:56.679 | WARNING  | bot_processors.pricing.agmarknet_scraper:scrape_all:533 - \u26a0\ufe0f agmarknet_scraper: failed on Cereals/Jaee, reloading form and skipping
+Traceback (most recent call last):
+
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+    |    -> <function Thread._bootstrap_inner at 0x0000028707FAF420>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+    |    -> <function Thread.run at 0x0000028707FAF740>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+    |    |        |    |        |    -> {}
+    |    |        |    |        -> <Thread(asyncio_0, started 22408)>
+    |    |        |    -> (<weakref at 0x0000028721A898F0; to 'ThreadPoolExecutor' at 0x000002872133FBD0>, <_queue.SimpleQueue object at 0x0000028721A6...
+    |    |        -> <Thread(asyncio_0, started 22408)>
+    |    -> <function _worker at 0x0000028721A793A0>
+    -> <Thread(asyncio_0, started 22408)>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+    |         -> <function _WorkItem.run at 0x0000028721A7AA20>
+    -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+  File "C:\Users\Praneeth\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             |    |   |    |       |    -> {}
+             |    |   |    |       -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    |   |    -> ()
+             |    |   -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+             |    -> functools.partial(<built-in method run of _contextvars.Context object at 0x00000287215C1180>, <function scrape_all at 0x00000...
+             -> <concurrent.futures.thread._WorkItem object at 0x000002872133FC10>
+
+> File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 531, in scrape_all
+    commodity_scraped = _scrape_crop_all_states(page, group, commodity, crop_keyword)
+                        |                       |     |      |          -> 'jaee'
+                        |                       |     |      -> 'Jaee'
+                        |                       |     -> 'Cereals'
+                        |                       -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                        -> <function _scrape_crop_all_states at 0x000002870B20DC60>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 439, in _scrape_crop_all_states
+    _click_go(page)
+    |         -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+    -> <function _click_go at 0x000002870B20D6C0>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\bot_processors\pricing\agmarknet_scraper.py", line 126, in _click_go
+    page.click("button:has-text('Go')", timeout=_GO_CLICK_TIMEOUT_MS)
+    |    |                                      -> 15000
+    |    -> <function Page.click at 0x000002870B1DCAE0>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\sync_api\_generated.py", line 10941, in click
+    self._sync(
+    |    -> <function SyncBase._sync at 0x000002870B1AC040>
+    -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           |    -> <method 'result' of '_asyncio.Task' objects>
+           -> <Task finished name='Task-852' coro=<Page.click() done, defined at C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-pack...
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_page.py", line 886, in click
+    return await self._main_frame._click(**locals_to_params(locals()))
+                 |    |           |        -> <function locals_to_params at 0x000002870A802020>
+                 |    |           -> <function Frame._click at 0x000002870B13DA80>
+                 |    -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+                 -> <Page url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_frame.py", line 591, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+          |    |        |             |    |         -> <function locals_to_params at 0x000002870A802020>
+          |    |        |             |    -> <function Frame._timeout at 0x000002870B13C9A0>
+          |    |        |             -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+          |    |        -> <function Channel.send at 0x000002870A802CA0>
+          |    -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+          -> <Frame name= url='https://agmarknet.gov.in/daily-price-and-arrival-report'>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+                 |    |           -> <function Connection.wrap_api_call at 0x000002870B090CC0>
+                 |    -> <playwright._impl._connection.Connection object at 0x0000028721A7ED50>
+                 -> <playwright._impl._connection.Channel object at 0x00000287217390D0>
+  File "C:\Users\Praneeth\Desktop\Agent\pipecat\venv\Lib\site-packages\playwright\_impl\_connection.py", line 563, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+          -> <function rewrite_error at 0x000002870A72F9C0>
+
+playwright._impl._errors.TimeoutError: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("button:has-text('Go')")
+    - locator resolved to 2 elements. Proceeding with the first one: <button type="button" aria-label="Apply filters and fetch data" class="\u21b5        px-6 py-2 min-w-[80px] font-medium rounded-md transition-all duration-200\u21b5        bg-darkerBlue text-white hover:bg-opacity-90 active:bg-blue-800 shadow-md hover:shadow-lg\u21b5        \u21b5      ">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"></div> from <div class="fixed inset-0 z-50 flex items-center justify-center">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-08-12 09:34:17.439 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Jowar(Sorghum) (all states) -> 0 rows
+2026-08-12 09:34:17.439 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 10/585 commodities done
+2026-08-12 09:34:24.983 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:34:33.679 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: Kodo Millet(Varagu) (all states) -> 0 rows
+2026-08-12 09:34:33.679 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 11/585 commodities done
+2026-08-12 09:34:40.781 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:34:47.074 | WARNING  | bot_processors.pricing.agmarknet_scraper:_click_go:146 - \u26a0\ufe0f agmarknet_scraper: captcha rejected (attempt 1/12), refreshing and retrying
+2026-08-12 09:34:51.240 | INFO     | bot_processors.pricing.agmarknet_scraper:_scrape_crop_all_states:443 - \U0001f33e agmarknet_scraper: kutki (all states) -> 0 rows
+2026-08-12 09:34:51.240 | INFO     | bot_processors.pricing.agmarknet_scraper:scrape_all:554 - \U0001f4ca agmarknet_scraper: 12/585 commodities done

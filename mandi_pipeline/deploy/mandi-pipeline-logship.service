@@ -1,0 +1,21 @@
+# /etc/systemd/system/mandi-pipeline-logship.service
+# Ship rotated scrape-log archives to Azure Blob (agmarknet_api/logs/<YYYY-MM>/)
+# and prune them from local disk, so the VM doesn't fill with log history.
+[Unit]
+Description=mandi_pipeline: ship rotated scrape logs to blob
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+ExecStart=/home/azureuser/Web_Scraper/venv/bin/python -m mandi_pipeline.run --ship-logs
+Nice=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/state

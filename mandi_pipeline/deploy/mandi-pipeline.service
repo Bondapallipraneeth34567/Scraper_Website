@@ -1,0 +1,35 @@
+# /etc/systemd/system/mandi-pipeline.service
+# One AGMARKNET sweep (resumes the current day). Triggered by the timer.
+[Unit]
+Description=mandi_pipeline AGMARKNET direct-API sweep (Approach 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+# Reuses the venv already shared by Web_Scraper/ and scraper_csv/ (has
+# easyocr/torch/opencv installed, ~5.3GB) rather than a dedicated
+# /opt/mandi_pipeline/venv -- the VM was near its disk limit (81% full)
+# when this was deployed. Switch this line if that changes.
+ExecStart=/home/azureuser/Web_Scraper/venv/bin/python -m mandi_pipeline.run --once --trigger timer
+# The sweep can legitimately run for hours (one CAPTCHA per commodity).
+# A full sweep of ~250 with-data commodities runs ~2-5h once the
+# no-data/rework waste is removed (see client._interpret_report "no data"
+# handling + PROGRESS_REFRESH_AFTER_HOURS). 12h is generous headroom -- a
+# run that hits it is genuinely stuck and should be killed. The next timer
+# tick then starts a fresh sweep, which resumes via pipeline_progress.
+TimeoutStartSec=12h
+Nice=10
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/state
+
+[Install]
+WantedBy=multi-user.target

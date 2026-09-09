@@ -1,0 +1,13 @@
+# /etc/systemd/system/mandi-pipeline-logship.timer
+# Daily, mid-morning UTC (after the overnight sweeps have rotated logs).
+[Unit]
+Description=Ship mandi_pipeline scrape logs to blob daily
+
+[Timer]
+OnCalendar=*-*-* 06:20:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=mandi-pipeline-logship.service
+
+[Install]
+WantedBy=timers.target
