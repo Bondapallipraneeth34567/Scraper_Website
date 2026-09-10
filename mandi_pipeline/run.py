@@ -94,12 +94,13 @@ def _cmd_remirror_csv(target_date: date) -> int:
     return 0 if ok == len(files) else 1
 
 
-def _cmd_verify_csv(target_date: date | None, *, live: bool, fix: bool,
+def _cmd_verify_csv(target_date: date | None, *, live: bool, fix: bool, deep: bool,
                     only: list[str] | None, limit: int | None) -> int:
     from .agmarknet.verify import verify_day
 
     tgt = target_date or max(date.today(), settings.data_min_date)
-    return verify_day(tgt, live=live or fix, fix=fix, only=only, limit=limit)
+    return verify_day(tgt, live=live or fix or deep, fix=fix, deep=deep,
+                      only=only, limit=limit)
 
 
 def _cmd_status() -> int:
@@ -142,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fix", action="store_true",
                    help="with --verify-csv: like --live, but re-scrape + upsert + rebuild the CSV "
                         "for every commodity the site is ahead on (holds the sweep lock)")
+    p.add_argument("--deep", action="store_true",
+                   help="with --verify-csv: implies --live; also diff OUR csv file against the "
+                        "site row-for-row and cell-by-cell (prices, quantity, units). Without "
+                        "--only, checks every commodity for the day (1 CAPTCHA each)")
     p.add_argument("--ship-logs", action="store_true",
                    help="upload rotated scrape-log archives to blob (BLOB_PREFIX/logs/<YYYY-MM>/) and prune local")
     p.add_argument("--remirror-csv", metavar="YYYY-MM-DD", default=None,
@@ -166,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status()
     if args.verify_csv:
         return _cmd_verify_csv(
-            args.date, live=args.live, fix=args.fix,
+            args.date, live=args.live, fix=args.fix, deep=args.deep,
             only=[s for s in (args.only or "").split(",") if s.strip()] or None,
             limit=args.limit_commodities,
         )

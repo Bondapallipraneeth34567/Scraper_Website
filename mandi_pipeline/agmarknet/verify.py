@@ -18,10 +18,21 @@ Two phases:
     spot (upsert + CSV rebuilt from the DB); without --fix it only reports
     what it WOULD re-scrape.
 
+  DEEP  (--deep, implies --live)  -- also reads OUR CSV file for each
+    commodity and compares it to the site row-for-row AND cell-by-cell:
+      only_site / only_csv   rows on one side but not the other
+      field_diffs            matched rows whose commodity_group / min /
+                             max / modal / price_unit / arrival_quantity /
+                             arrival_unit disagree (site value vs csv value)
+    Without --only it checks every commodity that has a CSV or DB rows for
+    the day (one CAPTCHA each -- a full sweep's worth). With --fix, every
+    commodity that differs is re-scraped and its CSV rebuilt.
+
     python -m mandi_pipeline.run --verify-csv --date 2026-09-06
     python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --live
     python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --fix
-    python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --fix --only Tomato,Onion
+    python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --deep --only Tomato,Onion
+    python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --deep --fix
 
 Exit code is 0 only when nothing is left short.
 """
@@ -41,6 +52,28 @@ from ..db import repository as repo
 APPROACH = "agmarknet_api"
 _KEY = ("state", "district", "market", "variety", "grade")
 
+# fields compared cell-by-cell in --deep (the key fields are already equal
+# for a matched row). ("name", "num"|"str")
+_CMP_FIELDS = (
+    ("commodity_group", "str"),
+    ("min_price", "num"),
+    ("max_price", "num"),
+    ("modal_price", "num"),
+    ("price_unit", "str"),
+    ("arrival_quantity", "num"),
+    ("arrival_unit", "str"),
+)
+
+# CSV header text -> normalized-row key (inverse of csv_export._COLUMNS)
+_CSV_HEADER_TO_KEY = {
+    "Commodity Group": "commodity_group", "Commodity": "commodity",
+    "Variety": "variety", "Grade": "grade", "Market": "market",
+    "District": "district", "State/UT": "state", "Arrival Date": "arrival_date",
+    "Min Price": "min_price", "Max Price": "max_price", "Modal Price": "modal_price",
+    "Price Unit": "price_unit", "Arrival Quantity": "arrival_quantity",
+    "Arrival Unit": "arrival_unit",
+}
+
 _norm_re = re.compile(r"[^a-z0-9]+")
 
 
@@ -50,6 +83,53 @@ def _norm(s: str) -> str:
 
 def _row_key(r: dict) -> tuple:
     return tuple((r.get(k) or "").strip() for k in _KEY)
+
+
+def _as_num(v):
+    if v in (None, "", "NR", "-"):
+        return None
+    try:
+        return float(str(v).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def _field_equal(kind: str, a, b) -> bool:
+    if kind == "num":
+        na, nb = _as_num(a), _as_num(b)
+        if na is None or nb is None:
+            return na is None and nb is None
+        return abs(na - nb) < 0.005
+    return (str(a or "").strip().casefold()) == (str(b or "").strip().casefold())
+
+
+def _read_our_csv(path) -> dict[tuple, dict]:
+    """Our per-commodity CSV file -> {row_key: normalized-ish row dict},
+    keyed the same way as the parsed site rows so the two can be joined."""
+    out: dict[tuple, dict] = {}
+    if not path.is_file():
+        return out
+    with path.open("r", newline="", encoding="utf-8") as fh:
+        for raw in _csv.DictReader(fh):
+            row = {key: (raw.get(hdr) or "").strip()
+                   for hdr, key in _CSV_HEADER_TO_KEY.items()}
+            out[_row_key(row)] = row
+    return out
+
+
+def _deep_diff(site_rows: list[dict], our_csv: dict[tuple, dict]) -> dict:
+    """Cell-by-cell comparison of the live site rows against our CSV file.
+    Returns {only_site, only_csv, field_diffs:[(key, field, site_val, csv_val)]}."""
+    site = {_row_key(r): r for r in site_rows}
+    only_site = sorted(set(site) - set(our_csv))
+    only_csv = sorted(set(our_csv) - set(site))
+    field_diffs: list[tuple] = []
+    for k in sorted(set(site) & set(our_csv)):
+        s, c = site[k], our_csv[k]
+        for name, kind in _CMP_FIELDS:
+            if not _field_equal(kind, s.get(name), c.get(name)):
+                field_diffs.append((k, name, s.get(name), c.get(name)))
+    return {"only_site": only_site, "only_csv": only_csv, "field_diffs": field_diffs}
 
 
 def _csv_counts(day_dir) -> tuple[dict[str, int], list[str]]:
@@ -126,7 +206,7 @@ def _print_offline(o: dict) -> None:
         print(f"  ! unreadable CSV: {b}")
     flagged = o["flagged"]
     if not flagged:
-        print("  ✓ every commodity reconciles (csv == db).")
+        print("  OK: every commodity reconciles (csv == db).")
         return
     w = max(len(n) for n, *_ in flagged)
     print(f"\n  {len(flagged)} flagged:")
@@ -136,18 +216,24 @@ def _print_offline(o: dict) -> None:
         print(f"    {name.ljust(w)}  {c:>6} {d:>6} {str(pr):>6}  {ps:<9} {verdict}")
 
 
-def _live(target_date: date, source: str, o: dict, *, fix: bool,
+def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
           only: list[str] | None, limit: int | None) -> int:
-    """Diff the live site against the DB for the target commodities.
-    Returns the count still short after any --fix."""
+    """Diff the live site against the DB (and, with deep=True, cell-by-cell
+    against our CSV file) for the target commodities. Returns the count of
+    commodities still discrepant after any --fix."""
     # local imports: only needed on the network path, and they pull in httpx
     from .client import AgmarknetClient
     from .captcha import build_solver
+    from .csv_export import commodity_csv_path
     from .pipeline import SweepStats, probe_commodity, _store_commodity_rows, _single_instance_lock
     from . import taxonomy
 
     if only:
         targets = list(only)
+    elif deep:
+        # deep needs a site fetch per commodity; without an explicit list,
+        # check every commodity that has either a CSV or DB rows for the day
+        targets = sorted(set(o["csv_counts"]) | set(o["db_counts"]), key=str.lower)
     else:
         # everything the offline pass thinks the DB might be behind on
         targets = [n for (n, c, d, *_rest, v) in o["flagged"]
@@ -169,7 +255,7 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool,
             try:
                 stack.enter_context(_single_instance_lock())
             except BlockingIOError:
-                print("  ⚠ a sweep is already running -- skipping --fix (try again later)")
+                print("  !! a sweep is already running -- skipping --fix (try again later)")
                 return len(targets)
         with repo.connect() as conn, AgmarknetClient() as client:
             tax = {c["commodity_name"]: c for c in taxonomy.get_sweep_list(conn, client)}
@@ -188,7 +274,7 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool,
                         c["commodity_name"], target_date, stats,
                     )
                 except Exception as e:  # noqa: BLE001 -- report & move on
-                    print(f"  {name.ljust(w)}  ✗ fetch failed: {type(e).__name__}: {str(e)[:80]}")
+                    print(f"  {name.ljust(w)}  XX fetch failed: {type(e).__name__}: {str(e)[:80]}")
                     still_short += 1
                     continue
 
@@ -209,13 +295,38 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool,
                       f"db={len(db_rows):<4} missing={len(missing):<3} stale={len(stale):<3}"
                       f"{drop_note}  {verdict}")
 
-                if missing or declared > len(db_rows):
+                deep_bad = False
+                if deep:
+                    our_csv = _read_our_csv(commodity_csv_path(target_date, stored_name))
+                    d = _deep_diff(site_rows, our_csv)
+                    nd = len(d["field_diffs"])
+                    deep_bad = bool(d["only_site"] or d["only_csv"] or nd)
+                    if not our_csv:
+                        print(f"  {' '.ljust(w)}  -> deep: no CSV file for this commodity")
+                    elif not deep_bad:
+                        print(f"  {' '.ljust(w)}  -> deep: CSV matches site exactly "
+                              f"({len(our_csv)} rows, all fields)")
+                    else:
+                        print(f"  {' '.ljust(w)}  -> deep: only_site={len(d['only_site'])} "
+                              f"only_csv={len(d['only_csv'])} field_diffs={nd}")
+                        for k, fld, sv, cv in d["field_diffs"][:6]:
+                            st, di, mk, vr, gr = k
+                            print(f"  {' '.ljust(w)}      [{st}/{di}/{mk}/{vr}/{gr}] "
+                                  f"{fld}: site={sv!r} csv={cv!r}")
+                        if nd > 6:
+                            print(f"  {' '.ljust(w)}      ... +{nd - 6} more field diffs")
+                        for k in d["only_site"][:4]:
+                            print(f"  {' '.ljust(w)}      only on site: {'/'.join(k)}")
+                        for k in d["only_csv"][:4]:
+                            print(f"  {' '.ljust(w)}      only in csv : {'/'.join(k)}")
+
+                if missing or declared > len(db_rows) or deep_bad:
                     if fix and site_rows:
                         ins, upd, unch = _store_commodity_rows(
                             conn, c["commodity_id"], stored_name, target_date, site_rows, stats,
                         )
                         after = len(repo.rows_for_commodity_date(conn, stored_name, target_date, source))
-                        print(f"  {' '.ljust(w)}  ↳ re-scraped: +{ins} new / ~{upd} changed  "
+                        print(f"  {' '.ljust(w)}  -> re-scraped: +{ins} new / ~{upd} changed  "
                               f"-> db now {after}, CSV rebuilt")
                         if after < declared:
                             still_short += 1
@@ -228,23 +339,24 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool,
 
 
 def verify_day(target_date: date, *, source: str = "agmarknet_api",
-               live: bool = False, fix: bool = False,
+               live: bool = False, fix: bool = False, deep: bool = False,
                only: list[str] | None = None, limit: int | None = None) -> int:
     print(f"\nVerify CSV / DB / site -- arrival_date {target_date}  (source={source})")
     o = _offline(target_date, source)
     _print_offline(o)
 
     exit_bad = 1 if o["flagged"] else 0
-    if live or fix:
-        still = _live(target_date, source, o, fix=fix, only=only, limit=limit)
+    if live or fix or deep:
+        still = _live(target_date, source, o, fix=fix, deep=deep, only=only, limit=limit)
         noun = "commodity" if still == 1 else "commodities"
+        what = "discrepant vs the site" if deep else "the site is ahead on"
         if fix:
             exit_bad = 1 if still else 0
-            print("\n✓ nothing left short." if not still
-                  else f"\n{still} {noun} still short -- see above.")
+            print("\nOK: nothing left discrepant." if not still
+                  else f"\n{still} {noun} still discrepant -- see above.")
         else:
             exit_bad = exit_bad or (1 if still else 0)
-            print(f"\n{still} {noun} the site is ahead on "
+            print(f"\n{still} {noun} {what} "
                   f"(run again with --fix to re-scrape).")
     print()
     return exit_bad
