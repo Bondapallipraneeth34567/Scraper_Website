@@ -65,9 +65,11 @@ class SweepStats:
     # API promised then didn't return + rows the parser had to drop (no
     # usable price / missing key field). Surfaced in --status and pipeline_runs.
     rows_missing: int = 0
-    # rows kept only because a missing min/max/modal was filled from the
-    # price(s) that were reported (auditable; not a loss).
-    rows_backfilled: int = 0
+    # rows stored with >=1 of min/max/modal NULL (site reported a partial
+    # price). Not a loss -- a faithful copy. Auditable.
+    rows_partial: int = 0
+    # stale rows deleted so v3 mirrors the site exactly (see repo.sync_commodity_date).
+    rows_pruned: int = 0
     captcha_solves: int = 0
     throttle_events: int = 0
     status: str = "running"
@@ -198,7 +200,7 @@ def _process_commodity(
 
     stats.rows_seen += len(raw_rows)
     rows, prep = normalize_rows(raw_rows, fallback_commodity=cname, fallback_group=gname)
-    stats.rows_backfilled += prep.backfilled
+    stats.rows_partial += prep.partial_price
 
     # Completeness check: the API tells us (total_count) how many rows exist
     # for this commodity/date. Anything we didn't fetch, plus anything the
@@ -219,27 +221,47 @@ def _process_commodity(
         logger.info(f"·  {cname}: no rows for {target_date} (recorded as empty)")
         return "empty"
 
-    ins, upd, unch = _store_commodity_rows(conn, cid, cname, target_date, rows, stats)
+    # A fetch is "complete" -- safe to mirror/prune against -- only when we
+    # retrieved every row the API declared and the parser dropped nothing
+    # for a transport/schema reason (unmappable rows can't be mirrored
+    # either way, so a 'no_price'/'missing_key_field' drop doesn't block it).
+    transport_drops = sum(v for k, v in prep.drop_reasons.items()
+                          if k in ("not_a_dict", "unparseable_arrival_date"))
+    complete = shortfall == 0 and transport_drops == 0
+
+    ins, upd, unch = _store_commodity_rows(conn, cid, cname, target_date, rows, stats,
+                                           complete=complete)
     logger.info(f"✓  {cname}: {len(rows)} rows this sweep  (+{ins} new / ~{upd} changed / ={unch} same)")
     return "done"
 
 
 def _store_commodity_rows(conn, cid: int, cname: str, target_date: date,
-                          rows: list[dict], stats: SweepStats) -> tuple[int, int, int]:
-    """Upsert one commodity's normalized rows, record progress, and rewrite
-    its CSV from the DB. Shared by the sweep and by verify.py's --fix path.
+                          rows: list[dict], stats: SweepStats, *,
+                          complete: bool) -> tuple[int, int, int]:
+    """Reconcile one commodity's rows into market_prices_v3, record progress,
+    and rewrite its CSV from the DB. Shared by the sweep and by verify.py's
+    --fix path.
 
-    The CSV is written from `market_prices_v3` *after* the upsert -- not just
-    the rows passed in -- so the file is the COMPLETE extract for the day
-    (every sweep's rows, including markets that reported late) and always
-    reconciles with v3. A CSV failure must not fail the committed DB write."""
-    ins, upd, unch = repo.upsert_price_rows(conn, rows)
+    When `complete` (we have every row the site declared) and
+    MIRROR_PRUNE_STALE is on, stale rows for this commodity/date that the
+    site no longer returns are DELETED, so v3 -- and the CSV built from it
+    -- is a faithful mirror of the site, not an ever-growing superset. The
+    CSV is written from v3 *after* the reconcile, so it always matches. A
+    CSV failure must not fail the committed DB write."""
+    prune = complete and settings.mirror_prune_stale
+    stored_name = rows[0]["commodity"]
+    ins, upd, unch, pruned = repo.sync_commodity_date(
+        conn, rows, commodity=stored_name, arrival_date=target_date, prune=prune,
+        max_prune_ratio=settings.mirror_max_prune_ratio, prune_floor=settings.mirror_prune_floor,
+    )
     stats.rows_inserted += ins
     stats.rows_updated += upd
     stats.rows_unchanged += unch
+    stats.rows_pruned += pruned
     repo.record_progress(conn, APPROACH, target_date, cid, cname, "done", rows_upserted=len(rows))
+    if pruned:
+        logger.info(f"·  {cname}: pruned {pruned} stale row(s) to mirror the site")
 
-    stored_name = rows[0]["commodity"]
     try:
         csv_rows = repo.rows_for_commodity_date(conn, stored_name, target_date) or rows
         write_commodity_csv(target_date, stored_name, csv_rows)
@@ -488,7 +510,7 @@ def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
             if k in {
                 "commodities_total", "commodities_done", "commodities_failed",
                 "rows_seen", "rows_inserted", "rows_updated", "rows_unchanged",
-                "rows_missing", "captcha_solves", "throttle_events",
+                "rows_missing", "rows_pruned", "captcha_solves", "throttle_events",
             }
         })
         holdings = "  ".join(f"{d}:{repo.count_rows_for_date(conn, d)}" for d in dates)
@@ -496,8 +518,9 @@ def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
             f"■  sweep {stats.status}  done={stats.commodities_done}/{stats.commodities_total} "
             f"failed={stats.commodities_failed}  rows +{stats.rows_inserted}/"
             f"~{stats.rows_updated}/={stats.rows_unchanged}  missing={stats.rows_missing} "
-            f"backfilled={stats.rows_backfilled}  captchas={stats.captcha_solves} "
-            f"throttles={stats.throttle_events}  v3 holds  {holdings}"
+            f"pruned={stats.rows_pruned} partial={stats.rows_partial}  "
+            f"captchas={stats.captcha_solves} throttles={stats.throttle_events}  "
+            f"v3 holds  {holdings}"
         )
 
     _post_run_notify(stats)

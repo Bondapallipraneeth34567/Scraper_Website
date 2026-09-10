@@ -114,6 +114,20 @@ class Settings:
     # longer than this -- watch rows_unchanged in pipeline_runs.
     progress_refresh_after_hours: float = field(default_factory=lambda: _f("PROGRESS_REFRESH_AFTER_HOURS", 4.0))
 
+    # --- mirror the site exactly (100% accuracy) ---
+    # After a COMPLETE, healthy fetch of a commodity for a date (every row
+    # the API declared was retrieved), delete any market_prices_v3 rows for
+    # that commodity+date whose unique key is no longer in the site's
+    # response -- so v3 (and the CSV built from it) is a faithful mirror,
+    # not an ever-growing superset that keeps stale/superseded rows.
+    mirror_prune_stale: bool = field(default_factory=lambda: _b("MIRROR_PRUNE_STALE", True))
+    # Safety brake: if a single reconcile would delete more than this
+    # fraction of the commodity's existing rows for the date (and it has a
+    # meaningful number to begin with), SKIP the prune and flag the run --
+    # a sudden shrink is almost always an upstream glitch, not a real drop.
+    mirror_max_prune_ratio: float = field(default_factory=lambda: _f("MIRROR_MAX_PRUNE_RATIO", 0.34))
+    mirror_prune_floor: int = field(default_factory=lambda: _i("MIRROR_PRUNE_FLOOR", 15))
+
     # --- skip perpetually-empty commodities (livestock, wood, exotic
     #     flowers -- ~335/605 return "No data available" every day). Each
     #     still costs a CAPTCHA + a call, so we stop checking them daily. ---
@@ -157,6 +171,10 @@ class Settings:
     csv_output_enabled: bool = field(default_factory=lambda: _b("CSV_OUTPUT_ENABLED", True))
     csv_output_dir: Path = field(default_factory=lambda: _path("CSV_OUTPUT_DIR", "mandi_pipeline/state/downloads"))
     csv_local_keep: bool = field(default_factory=lambda: _b("CSV_LOCAL_KEEP", True))
+    # OFF by default: store min/max/modal EXACTLY as AGMARKNET reports them,
+    # leaving a blank price column NULL. ON = fill a missing min/max/modal
+    # from whichever of the three was reported (a convenience, not the truth).
+    csv_backfill_partial_prices: bool = field(default_factory=lambda: _b("CSV_BACKFILL_PARTIAL_PRICES", False))
 
     # --- Azure Blob mirror for the CSVs ---
     azure_storage_connection_string: str = field(default_factory=lambda: _s("AZURE_STORAGE_CONNECTION_STRING"))

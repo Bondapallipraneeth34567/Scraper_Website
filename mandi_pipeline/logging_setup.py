@@ -22,6 +22,15 @@ def setup_logging() -> None:
     if _CONFIGURED:
         return
 
+    # The log lines carry emoji / non-ASCII (▶ ■ · 📄 …). On a Windows
+    # console (cp1252) that raises UnicodeEncodeError inside the sink; force
+    # UTF-8 so the same code logs cleanly on the VM and on a dev box.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     logger.remove()
 
     logger.add(
@@ -45,6 +54,7 @@ def setup_logging() -> None:
         retention=10,
         compression="zip",
         enqueue=True,
+        encoding="utf-8",
         format="{time:YYYY-MM-DD HH:mm:ss} {level: <8} {extra[run_id]} {message}",
     )
 
@@ -55,6 +65,7 @@ def setup_logging() -> None:
         retention=10,
         serialize=True,
         enqueue=True,
+        encoding="utf-8",
     )
 
     # Default binding so the format string never KeyErrors before a run id

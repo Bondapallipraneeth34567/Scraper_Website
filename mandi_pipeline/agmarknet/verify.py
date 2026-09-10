@@ -320,15 +320,22 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                         for k in d["only_csv"][:4]:
                             print(f"  {' '.ljust(w)}      only in csv : {'/'.join(k)}")
 
-                if missing or declared > len(db_rows) or deep_bad:
+                if missing or stale or declared > len(db_rows) or deep_bad:
                     if fix and site_rows:
+                        # we have the full site response here (prep.raw rows,
+                        # declared total) -- safe to mirror/prune stale rows
+                        complete = declared <= prep.raw
+                        pruned_before = stats.rows_pruned
                         ins, upd, unch = _store_commodity_rows(
                             conn, c["commodity_id"], stored_name, target_date, site_rows, stats,
+                            complete=complete,
                         )
+                        this_pruned = stats.rows_pruned - pruned_before
                         after = len(repo.rows_for_commodity_date(conn, stored_name, target_date, source))
-                        print(f"  {' '.ljust(w)}  -> re-scraped: +{ins} new / ~{upd} changed  "
+                        pr = f" -{this_pruned} pruned" if this_pruned else ""
+                        print(f"  {' '.ljust(w)}  -> re-scraped: +{ins} new / ~{upd} changed{pr}  "
                               f"-> db now {after}, CSV rebuilt")
-                        if after < declared:
+                        if after != len(site_rows):
                             still_short += 1
                     else:
                         still_short += 1

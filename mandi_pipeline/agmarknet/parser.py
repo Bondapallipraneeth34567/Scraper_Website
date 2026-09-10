@@ -23,6 +23,7 @@ from typing import Any
 
 from loguru import logger
 
+from ..config import settings
 from .client import SchemaError
 
 
@@ -31,19 +32,19 @@ class ParseReport:
     """What normalize_rows did -- so the sweep can tell 'this commodity
     genuinely had 3 rows' from 'we fetched 300 and silently threw 297 away'.
 
-      raw         rows in the /report response
-      kept        rows returned (go to both the DB and the CSV)
-      dropped     rows discarded -- no usable price at all, or a missing
-                  key field (state/district/market/commodity/date)
-      backfilled  rows KEPT only because a missing min/max/modal was filled
-                  in from the price(s) that were present (AGMARKNET often
-                  reports just a modal price); recorded so it's auditable
+      raw           rows in the /report response
+      kept          rows returned (go to both the DB and the CSV)
+      dropped       rows discarded -- no usable price at all, or a missing
+                    key field (state/district/market/commodity/date)
+      partial_price rows KEPT with at least one of min/max/modal NULL --
+                    stored EXACTLY as the site shows them (a blank cell is
+                    not guessed from the other two). Auditable, not a loss.
       drop_reasons  {reason: count}
     """
     raw: int = 0
     kept: int = 0
     dropped: int = 0
-    backfilled: int = 0
+    partial_price: int = 0
     drop_reasons: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -108,11 +109,14 @@ def _parse_date(v: Any) -> date | None:
 
 
 def _row_hash(d: dict) -> str:
-    canon = "|".join(str(d.get(k, "")) for k in (
-        "state", "district", "market", "commodity_group", "commodity", "variety", "grade",
-        "arrival_date", "price_date", "min_price", "max_price", "modal_price",
-        "price_unit", "arrival_quantity", "arrival_unit",
-    ))
+    canon = "|".join(
+        "" if d.get(k) is None else str(d.get(k))
+        for k in (
+            "state", "district", "market", "commodity_group", "commodity", "variety", "grade",
+            "arrival_date", "price_date", "min_price", "max_price", "modal_price",
+            "price_unit", "arrival_quantity", "arrival_unit",
+        )
+    )
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
@@ -125,15 +129,15 @@ def normalize_rows(
 ) -> tuple[list[dict], ParseReport]:
     """Map + clean + hash. Returns (rows, report) -- rows keyed exactly by
     repository.PRICE_COLS, de-duplicated on the v3 unique key (last row wins),
-    and a ParseReport describing what was kept / backfilled / dropped so the
+    and a ParseReport describing what was kept / partial / dropped so the
     caller can surface silent data loss.
 
-    A row is only dropped when a key field (state/district/market/commodity/
-    arrival_date) is missing or when NONE of min/max/modal price parsed. A
-    row that has at least one price but not all three is KEPT with the gaps
-    filled from the price(s) present (and counted in report.backfilled) --
-    AGMARKNET frequently reports only a modal price, and the site's own CSV
-    keeps those rows."""
+    A row is dropped ONLY when a key field (state/district/market/commodity/
+    arrival_date) is missing or when NONE of min/max/modal price parsed.
+    A row with 1 or 2 of the three prices is KEPT and stored EXACTLY as the
+    site shows it -- the blank price columns stay NULL (not guessed from the
+    others), so the row is a faithful copy. Set CSV_BACKFILL_PARTIAL_PRICES
+    to fill the gaps from the present price(s) instead."""
     rep = ParseReport(raw=len(raw_rows))
     if not raw_rows:
         return [], rep
@@ -163,14 +167,17 @@ def normalize_rows(
             if all(p is None for p in (mn, mx, md)):
                 _drop("no_price")
                 continue
-            # at least one of the three parsed -- keep the row, fill the gaps
-            if mn is None:
-                mn = mx if mx is not None else md
-            if mx is None:
-                mx = mn if mn is not None else md
-            if md is None:
-                md = mn
-            rep.backfilled += 1
+            rep.partial_price += 1
+            if settings.csv_backfill_partial_prices:
+                # opt-in: fill the blanks from whatever price(s) are present
+                if mn is None:
+                    mn = mx if mx is not None else md
+                if mx is None:
+                    mx = mn if mn is not None else md
+                if md is None:
+                    md = mn
+            # default: leave the missing price(s) as NULL -- store what the
+            # site actually shows.
 
         rec = {
             "state": str(state).strip(),
@@ -205,7 +212,8 @@ def normalize_rows(
     if rep.dropped:
         logger.warning(f"parser: dropped {rep.dropped}/{rep.raw} unmappable/incomplete rows "
                        f"for {fallback_commodity!r} ({rep.drop_reasons})")
-    if rep.backfilled:
-        logger.info(f"parser: backfilled min/max/modal on {rep.backfilled}/{rep.raw} rows "
-                    f"for {fallback_commodity!r} (only a partial price was reported)")
+    if rep.partial_price:
+        how = "filled from present price(s)" if settings.csv_backfill_partial_prices else "stored as-is (NULL kept)"
+        logger.info(f"parser: {rep.partial_price}/{rep.raw} rows for {fallback_commodity!r} "
+                    f"had a partial price -- {how}")
     return list(out.values()), rep

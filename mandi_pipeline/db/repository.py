@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 import psycopg
+from loguru import logger
 from psycopg.rows import dict_row
 
 from ..config import settings
@@ -92,7 +93,7 @@ def finish_run(conn: psycopg.Connection, run_id: int, status: str, *, error: str
     fields = {
         "commodities_total", "commodities_done", "commodities_failed",
         "rows_seen", "rows_inserted", "rows_updated", "rows_unchanged",
-        "rows_missing", "captcha_solves", "throttle_events",
+        "rows_missing", "rows_pruned", "captcha_solves", "throttle_events",
     }
     sets = ", ".join(f"{k} = %s" for k in counts if k in fields)
     params = [counts[k] for k in counts if k in fields]
@@ -316,6 +317,64 @@ def upsert_price_rows(
 
     unchanged = submitted - inserted - updated
     return inserted, updated, unchanged
+
+
+def sync_commodity_date(
+    conn: psycopg.Connection, rows: list[dict], *, commodity: str, arrival_date: date,
+    source: str = "agmarknet_api", prune: bool = True, table: str | None = None,
+    max_prune_ratio: float = 0.34, prune_floor: int = 15,
+) -> tuple[int, int, int, int]:
+    """Upsert `rows` (already normalized + de-duped on the unique key), then
+    -- if `prune` and the caller has vouched the fetch was COMPLETE -- delete
+    every stored row for this (commodity, arrival_date, source) whose unique
+    key is not in `rows`. The result is a faithful MIRROR of the site for
+    that commodity/date, not an ever-growing superset.
+
+    Safety brake: if the delete would remove more than `max_prune_ratio` of
+    the rows currently held for the commodity/date (and there are at least
+    `prune_floor` of them), it is rolled back and logged -- a sudden shrink
+    is almost always an upstream glitch. Returns (inserted, updated,
+    unchanged, pruned)."""
+    table = _safe_table(table or settings.target_table)
+    ins, upd, unch = upsert_price_rows(conn, rows, table=table)
+    if not prune or not rows:
+        return ins, upd, unch, 0
+
+    keys = [
+        (r["state"], r["district"], r["market"], r["commodity"],
+         r["variety"], r["grade"], r["arrival_date"])
+        for r in rows
+    ]
+    vals_ph = ",".join("(" + ",".join(["%s"] * 7) + ")" for _ in keys)
+    flat = [v for k in keys for v in k]
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT count(*) FROM {table} WHERE commodity = %s AND arrival_date = %s AND source = %s",
+            (commodity, arrival_date, source),
+        )
+        existing = cur.fetchone()[0]
+        cur.execute("SAVEPOINT mirror_prune")
+        cur.execute(
+            f"""DELETE FROM {table} t
+                 WHERE t.commodity = %s AND t.arrival_date = %s AND t.source = %s
+                   AND (t.state, t.district, t.market, t.commodity,
+                        t.variety, t.grade, t.arrival_date)
+                       NOT IN (VALUES {vals_ph})""",
+            [commodity, arrival_date, source, *flat],
+        )
+        pruned = cur.rowcount
+        if pruned and existing >= prune_floor and pruned > max_prune_ratio * existing:
+            cur.execute("ROLLBACK TO SAVEPOINT mirror_prune")
+            logger.warning(
+                f"mirror prune SKIPPED for {commodity} {arrival_date}: would delete "
+                f"{pruned}/{existing} rows (> {max_prune_ratio:.0%}) -- looks like an "
+                f"upstream glitch, not a real drop"
+            )
+            pruned = 0
+        else:
+            cur.execute("RELEASE SAVEPOINT mirror_prune")
+    conn.commit()
+    return ins, upd, unch, pruned
 
 
 # ------------------------------------------------- diff helpers (Approach 2)

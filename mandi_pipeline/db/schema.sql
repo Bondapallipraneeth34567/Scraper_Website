@@ -33,9 +33,13 @@ CREATE TABLE IF NOT EXISTS mandi.market_prices_v3 (
     grade            VARCHAR(120) NOT NULL DEFAULT '',
     arrival_date     DATE NOT NULL,
     price_date       DATE,
-    min_price        NUMERIC(12, 2) NOT NULL,
-    max_price        NUMERIC(12, 2) NOT NULL,
-    modal_price      NUMERIC(12, 2) NOT NULL,
+    -- Nullable on purpose: AGMARKNET routinely reports a modal price with
+    -- min/max blank (or vice versa). We store EXACTLY what the site shows --
+    -- a blank cell stays NULL, never guessed from the other two -- so the
+    -- row is a faithful copy. A row with all three NULL is dropped upstream.
+    min_price        NUMERIC(12, 2),
+    max_price        NUMERIC(12, 2),
+    modal_price      NUMERIC(12, 2),
     price_unit       VARCHAR(40),
     arrival_quantity NUMERIC(14, 2),
     arrival_unit     VARCHAR(40),
@@ -66,6 +70,11 @@ DO $$ BEGIN
             UNIQUE (state, district, market, commodity, variety, grade, arrival_date);
     END IF;
 END $$;
+-- Faithful-copy migration: a pre-existing v3 has min/max/modal NOT NULL.
+-- Drop it so partial-price rows are stored as the site shows them.
+ALTER TABLE mandi.market_prices_v3 ALTER COLUMN min_price   DROP NOT NULL;
+ALTER TABLE mandi.market_prices_v3 ALTER COLUMN max_price   DROP NOT NULL;
+ALTER TABLE mandi.market_prices_v3 ALTER COLUMN modal_price DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_mp_v3_commodity_date
     ON mandi.market_prices_v3 (commodity, arrival_date DESC);
@@ -93,6 +102,8 @@ CREATE TABLE IF NOT EXISTS mandi.pipeline_runs (
     rows_inserted      INTEGER DEFAULT 0,
     rows_updated       INTEGER DEFAULT 0,
     rows_unchanged     INTEGER DEFAULT 0,
+    rows_missing       INTEGER DEFAULT 0,   -- declared by the API but never stored
+    rows_pruned        INTEGER DEFAULT 0,   -- stale rows deleted to mirror the site
     captcha_solves     INTEGER DEFAULT 0,
     throttle_events    INTEGER DEFAULT 0,
     error              TEXT,
@@ -171,6 +182,7 @@ CREATE TABLE IF NOT EXISTS mandi.pipeline_source_state (
 );
 
 ALTER TABLE mandi.pipeline_runs ADD COLUMN IF NOT EXISTS rows_missing INTEGER DEFAULT 0;
+ALTER TABLE mandi.pipeline_runs ADD COLUMN IF NOT EXISTS rows_pruned  INTEGER DEFAULT 0;
 
 -- ---------------------------------------------------------------------
 -- Cached commodity taxonomy from GET /v1/daily-price-arrival/filters
