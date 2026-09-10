@@ -1,0 +1,33 @@
+# /etc/systemd/system/mandi-pipeline-catchup.service
+# Once-daily catch-up sweep: re-pulls the target date plus the previous 3
+# arrival dates. AGMARKNET mandis keep entering a day's prices for 24-48h
+# after the arrival date; the 4-hourly sweep only ever looks at "today", so
+# without this the late entries are never captured into market_prices_v3.
+# The incremental upsert makes the re-reads cheap -- unchanged rows cost
+# nothing, only genuinely new/changed rows are written.
+[Unit]
+Description=mandi_pipeline AGMARKNET catch-up sweep (target date + previous 3 days, for late arrivals)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+Group=azureuser
+WorkingDirectory=/opt/mandi_pipeline
+EnvironmentFile=/opt/mandi_pipeline/mandi_pipeline/.env
+ExecStart=/home/azureuser/Web_Scraper/venv/bin/python -m mandi_pipeline.run --once --trigger catchup --catchup-days 3
+# 4 dates x ~500 commodities, so longer than a normal sweep. 12h headroom;
+# a run that hits it is stuck and should be killed -- the next day's timer
+# starts fresh and resumes via pipeline_progress.
+TimeoutStartSec=12h
+Nice=15
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/mandi_pipeline/mandi_pipeline/state
+
+[Install]
+WantedBy=multi-user.target

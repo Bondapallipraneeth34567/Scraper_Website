@@ -6,6 +6,7 @@
   python -m mandi_pipeline.run --refresh-taxonomy     # re-pull commodity list
   python -m mandi_pipeline.run --dump-sample          # pin the /report row keys
   python -m mandi_pipeline.run --status               # recent runs + today's progress
+  python -m mandi_pipeline.run --verify-csv --date 2026-09-06   # CSV files vs market_prices_v3
 
 systemd runs `--once` every 4 hours (see deploy/). Each run only picks up
 commodities still missing for the day, so overlapping/rapid re-runs are safe.
@@ -93,6 +94,14 @@ def _cmd_remirror_csv(target_date: date) -> int:
     return 0 if ok == len(files) else 1
 
 
+def _cmd_verify_csv(target_date: date | None, *, live: bool, fix: bool,
+                    only: list[str] | None, limit: int | None) -> int:
+    from .agmarknet.verify import verify_day
+
+    tgt = target_date or max(date.today(), settings.data_min_date)
+    return verify_day(tgt, live=live or fix, fix=fix, only=only, limit=limit)
+
+
 def _cmd_status() -> int:
     with repo.connect() as conn:
         runs = repo.last_runs(conn, APPROACH, limit=8)
@@ -104,6 +113,7 @@ def _cmd_status() -> int:
         print(f"  run{r['run_id']:<6} {str(r['started_at'])[:19]}  {r['status']:<14} "
               f"done={r['commodities_done']}/{r['commodities_total']} "
               f"rows+{r['rows_inserted']}/~{r['rows_updated']} "
+              f"missing={r.get('rows_missing') or 0} "
               f"captchas={r['captcha_solves']} throttles={r['throttle_events']}"
               + (f"  ERR: {r['error'][:60]}" if r.get("error") else ""))
     done = sum(1 for s in prog.values() if s in ("done", "empty"))
@@ -123,6 +133,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dump-sample", action="store_true")
     p.add_argument("--sample-commodity", default="Wheat")
     p.add_argument("--status", action="store_true")
+    p.add_argument("--verify-csv", action="store_true",
+                   help="reconcile the per-commodity CSV files under CSV_OUTPUT_DIR/<date>/ "
+                        "against market_prices_v3 for --date (default: today); exit 1 on any mismatch")
+    p.add_argument("--live", action="store_true",
+                   help="with --verify-csv: also pull the live AGMARKNET /report for each "
+                        "short commodity (1 CAPTCHA each) and diff the site against the DB (dry-run)")
+    p.add_argument("--fix", action="store_true",
+                   help="with --verify-csv: like --live, but re-scrape + upsert + rebuild the CSV "
+                        "for every commodity the site is ahead on (holds the sweep lock)")
     p.add_argument("--ship-logs", action="store_true",
                    help="upload rotated scrape-log archives to blob (BLOB_PREFIX/logs/<YYYY-MM>/) and prune local")
     p.add_argument("--remirror-csv", metavar="YYYY-MM-DD", default=None,
@@ -131,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="sweep only the first N commodities (testing)")
     p.add_argument("--only", default=None,
                    help="comma-separated commodity names to sweep (testing), e.g. --only Wheat,Onion")
+    p.add_argument("--catchup-days", type=int, default=0, metavar="N",
+                   help="also re-sweep the previous N arrival dates, newest first, to pick up "
+                        "mandis that entered prices late (AGMARKNET data settles over 24-48h). "
+                        "0 = target date only (default). The daily catch-up timer uses 3.")
     args = p.parse_args(argv)
 
     if args.init_db:
@@ -141,6 +164,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_dump_sample(args.sample_commodity)
     if args.status:
         return _cmd_status()
+    if args.verify_csv:
+        return _cmd_verify_csv(
+            args.date, live=args.live, fix=args.fix,
+            only=[s for s in (args.only or "").split(",") if s.strip()] or None,
+            limit=args.limit_commodities,
+        )
     if args.ship_logs:
         from .storage import ship_logs
         n = ship_logs()
@@ -155,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             force_taxonomy=args.refresh_taxonomy_first,
             limit_commodities=args.limit_commodities,
             only=[s for s in (args.only or "").split(",") if s.strip()] or None,
+            catchup_days=args.catchup_days,
         )
         # exit non-zero on a fully failed run so systemd/monitoring notices;
         # 'partial' is exit 0 (progress was made, next timer picks up the rest).

@@ -17,12 +17,38 @@ row in a non-empty response is unmapped we raise SchemaError.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
 from loguru import logger
 
 from .client import SchemaError
+
+
+@dataclass
+class ParseReport:
+    """What normalize_rows did -- so the sweep can tell 'this commodity
+    genuinely had 3 rows' from 'we fetched 300 and silently threw 297 away'.
+
+      raw         rows in the /report response
+      kept        rows returned (go to both the DB and the CSV)
+      dropped     rows discarded -- no usable price at all, or a missing
+                  key field (state/district/market/commodity/date)
+      backfilled  rows KEPT only because a missing min/max/modal was filled
+                  in from the price(s) that were present (AGMARKNET often
+                  reports just a modal price); recorded so it's auditable
+      drop_reasons  {reason: count}
+    """
+    raw: int = 0
+    kept: int = 0
+    dropped: int = 0
+    backfilled: int = 0
+    drop_reasons: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def missing(self) -> int:
+        return self.dropped
 
 # field -> candidate keys. First entry = the VERIFIED 2026-09-04 live key.
 _CANDIDATES: dict[str, tuple[str, ...]] = {
@@ -96,26 +122,55 @@ def normalize_rows(
     fallback_commodity: str,
     fallback_group: str | None,
     source: str = "agmarknet_api",
-) -> list[dict]:
-    """Map + clean + hash. Returns rows keyed exactly by repository.PRICE_COLS.
-    De-duplicates on the v3 unique key (last row wins)."""
+) -> tuple[list[dict], ParseReport]:
+    """Map + clean + hash. Returns (rows, report) -- rows keyed exactly by
+    repository.PRICE_COLS, de-duplicated on the v3 unique key (last row wins),
+    and a ParseReport describing what was kept / backfilled / dropped so the
+    caller can surface silent data loss.
+
+    A row is only dropped when a key field (state/district/market/commodity/
+    arrival_date) is missing or when NONE of min/max/modal price parsed. A
+    row that has at least one price but not all three is KEPT with the gaps
+    filled from the price(s) present (and counted in report.backfilled) --
+    AGMARKNET frequently reports only a modal price, and the site's own CSV
+    keeps those rows."""
+    rep = ParseReport(raw=len(raw_rows))
     if not raw_rows:
-        return []
+        return [], rep
+
+    def _drop(reason: str) -> None:
+        rep.dropped += 1
+        rep.drop_reasons[reason] = rep.drop_reasons.get(reason, 0) + 1
 
     out: dict[tuple, dict] = {}
-    dropped = 0
     for raw in raw_rows:
         if not isinstance(raw, dict):
-            dropped += 1
+            _drop("not_a_dict")
             continue
         arrival = _parse_date(_get(raw, "arrival_date"))
         mn, mx, md = _num(_get(raw, "min_price")), _num(_get(raw, "max_price")), _num(_get(raw, "modal_price"))
         state, district, market = _get(raw, "state"), _get(raw, "district"), _get(raw, "market")
         commodity = _get(raw, "commodity") or fallback_commodity
 
-        if not all((state, district, market, commodity)) or arrival is None or None in (mn, mx, md):
-            dropped += 1
+        if not all((state, district, market, commodity)):
+            _drop("missing_key_field")
             continue
+        if arrival is None:
+            _drop("unparseable_arrival_date")
+            continue
+
+        if None in (mn, mx, md):
+            if all(p is None for p in (mn, mx, md)):
+                _drop("no_price")
+                continue
+            # at least one of the three parsed -- keep the row, fill the gaps
+            if mn is None:
+                mn = mx if mx is not None else md
+            if mx is None:
+                mx = mn if mn is not None else md
+            if md is None:
+                md = mn
+            rep.backfilled += 1
 
         rec = {
             "state": str(state).strip(),
@@ -141,12 +196,16 @@ def normalize_rows(
                rec["variety"], rec["grade"], rec["arrival_date"])
         out[key] = rec
 
-    if dropped and not out:
+    if rep.dropped and not out:
         raise SchemaError(
             f"every one of {len(raw_rows)} rows failed to map -- the /report row "
             f"schema likely changed. Sample raw row: {raw_rows[0]!r}"
         )
-    if dropped:
-        logger.warning(f"parser: dropped {dropped}/{len(raw_rows)} unmappable/incomplete rows "
-                       f"for {fallback_commodity!r}")
-    return list(out.values())
+    rep.kept = len(out)
+    if rep.dropped:
+        logger.warning(f"parser: dropped {rep.dropped}/{rep.raw} unmappable/incomplete rows "
+                       f"for {fallback_commodity!r} ({rep.drop_reasons})")
+    if rep.backfilled:
+        logger.info(f"parser: backfilled min/max/modal on {rep.backfilled}/{rep.raw} rows "
+                    f"for {fallback_commodity!r} (only a partial price was reported)")
+    return list(out.values()), rep

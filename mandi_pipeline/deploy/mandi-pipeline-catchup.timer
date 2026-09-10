@@ -1,0 +1,17 @@
+# /etc/systemd/system/mandi-pipeline-catchup.timer
+# Fire the catch-up sweep once a day at 02:30 UTC (08:00 IST). This slot
+# sits between the 00:05 and 04:05 four-hourly sweeps; if one of those is
+# still running the catch-up simply records status=skipped_locked and the
+# next day's tick tries again (a missed catch-up day is not critical --
+# the previous 3 arrival dates are still re-covered on the following run).
+[Unit]
+Description=Daily mandi_pipeline catch-up sweep (previous 3 arrival dates, late-entry mop-up)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=600
+Unit=mandi-pipeline-catchup.service
+
+[Install]
+WantedBy=timers.target

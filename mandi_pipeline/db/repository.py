@@ -427,3 +427,61 @@ def commodities_present_for_date(conn: psycopg.Connection, target_date: date, so
             (target_date, source),
         )
         return {r[0] for r in cur.fetchall()}
+
+
+def commodity_row_counts_for_date(
+    conn: psycopg.Connection, target_date: date, source: str = "agmarknet_api",
+) -> dict[str, int]:
+    """{commodity: row_count} in the price table for this arrival_date.
+    Used by --verify-csv to reconcile the CSV artifacts against the DB."""
+    table = _safe_table(settings.target_table)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""SELECT commodity, count(*) FROM {table}
+                 WHERE arrival_date = %s AND source = %s
+                 GROUP BY commodity""",
+            (target_date, source),
+        )
+        return {c: n for c, n in cur.fetchall()}
+
+
+_CSV_ROW_COLS = (
+    "commodity_group", "commodity", "variety", "grade", "market", "district", "state",
+    "arrival_date", "min_price", "max_price", "modal_price", "price_unit",
+    "arrival_quantity", "arrival_unit",
+)
+
+
+def rows_for_commodity_date(
+    conn: psycopg.Connection, commodity: str, arrival_date: date, source: str = "agmarknet_api",
+) -> list[dict]:
+    """Every stored row for one (commodity, arrival_date), as dicts keyed for
+    csv_export._COLUMNS. This is what the per-commodity CSV is written from --
+    so the file is a COMPLETE extract for the day (all sweeps, incl. late
+    arrivals) that always reconciles with the DB, not a single sweep's
+    snapshot."""
+    table = _safe_table(settings.target_table)
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""SELECT {", ".join(_CSV_ROW_COLS)} FROM {table}
+                 WHERE commodity = %s AND arrival_date = %s AND source = %s
+                 ORDER BY state, district, market, variety, grade""",
+            (commodity, arrival_date, source),
+        )
+        return cur.fetchall()
+
+
+def progress_detail_for_date(
+    conn: psycopg.Connection, approach: str, target_date: date,
+) -> dict[str, dict]:
+    """{commodity_name: {status, rows_upserted, attempts, last_error}} from
+    mandi.pipeline_progress for this sweep. commodity_name is the taxonomy
+    name, which can differ slightly from the price table's `commodity`."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """SELECT commodity_name, status, rows_upserted, attempts, last_error
+                 FROM mandi.pipeline_progress
+                WHERE approach = %s AND target_date = %s""",
+            (approach, target_date),
+        )
+        return {r["commodity_name"]: r for r in cur.fetchall()}

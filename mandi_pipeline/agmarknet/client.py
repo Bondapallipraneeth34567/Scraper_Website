@@ -302,22 +302,52 @@ class AgmarknetClient:
         raise SchemaError(f"/report status=false, unrecognised message: {msg!r} (keys {sorted(j)})")
 
     # -- convenience: page a whole commodity given a first page result --
+    _MAX_PAGES = 500
+
     def fetch_all_pages(
         self, *, first: ReportResult, group_id: int, commodity_id: int,
         target_date: date, limit: int = 100000,
     ) -> list[dict]:
-        """Verified: limit=100000 makes total_pages == 1, so this is
-        normally a no-op. Kept so a future multi-page response still works
-        -- it reuses the report_ticket (no extra CAPTCHA)."""
+        """Return EVERY row for the commodity, not just page 1.
+
+        Verified: limit=100000 normally returns the whole commodity in one
+        response with total_pages == 1. But `total_pages` is derived by the
+        API from its own page size, and a truncated response still reports
+        total_pages == 1 -- trusting it silently loses rows. So we page on
+        the declared `total_count` instead: keep pulling pages (reusing the
+        report_ticket, no extra CAPTCHA) until we have as many rows as the
+        API said exist, a page comes back empty, or the safety cap is hit.
+        A residual shortfall is logged loudly (the sweep turns it into
+        SweepStats.rows_missing)."""
         rows = list(first.rows)
-        if first.total_pages <= 1 or not first.report_ticket:
+        want = first.total_count or len(rows)
+
+        if len(rows) >= want:
             return rows
-        for page in range(2, first.total_pages + 1):
-            logger.info(f"paging commodity {commodity_id}: page {page}/{first.total_pages}")
+        if not first.report_ticket:
+            logger.warning(
+                f"commodity {commodity_id}: got {len(rows)}/{want} rows and no "
+                f"report_ticket to page the rest -- returning partial"
+            )
+            return rows
+
+        page = 1
+        while len(rows) < want and page < self._MAX_PAGES:
+            page += 1
+            logger.info(f"paging commodity {commodity_id}: page {page} "
+                        f"({len(rows)}/{want} rows so far)")
             nxt = self.fetch_report(
                 group_id=group_id, commodity_id=commodity_id, target_date=target_date,
                 captcha_text=None, captcha_key=None,
                 report_ticket=first.report_ticket, page=page, limit=limit,
             )
+            if not nxt.rows:
+                break
             rows.extend(nxt.rows)
+
+        if len(rows) < want:
+            logger.warning(
+                f"commodity {commodity_id}: fetched {len(rows)}/{want} declared rows "
+                f"after {page} page(s) -- the API returned fewer than it promised"
+            )
         return rows

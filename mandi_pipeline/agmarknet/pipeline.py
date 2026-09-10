@@ -61,6 +61,13 @@ class SweepStats:
     rows_inserted: int = 0
     rows_updated: int = 0
     rows_unchanged: int = 0
+    # rows the API said exist for a commodity but we never stored: pages the
+    # API promised then didn't return + rows the parser had to drop (no
+    # usable price / missing key field). Surfaced in --status and pipeline_runs.
+    rows_missing: int = 0
+    # rows kept only because a missing min/max/modal was filled from the
+    # price(s) that were reported (auditable; not a loss).
+    rows_backfilled: int = 0
     captcha_solves: int = 0
     throttle_events: int = 0
     status: str = "running"
@@ -190,26 +197,72 @@ def _process_commodity(
         return "failed"
 
     stats.rows_seen += len(raw_rows)
-    rows = normalize_rows(raw_rows, fallback_commodity=cname, fallback_group=gname)
+    rows, prep = normalize_rows(raw_rows, fallback_commodity=cname, fallback_group=gname)
+    stats.rows_backfilled += prep.backfilled
+
+    # Completeness check: the API tells us (total_count) how many rows exist
+    # for this commodity/date. Anything we didn't fetch, plus anything the
+    # parser had to drop, is genuine missing data -- count it and log it
+    # rather than let it vanish.
+    declared = first.total_count or len(raw_rows)
+    shortfall = max(0, declared - len(raw_rows))
+    if shortfall or prep.dropped:
+        stats.rows_missing += shortfall + prep.dropped
+        logger.warning(
+            f"⚠️  {cname}: API declared {declared} rows, fetched {len(raw_rows)}, "
+            f"stored {len(rows)}  (short {shortfall} from paging, "
+            f"dropped {prep.dropped} in parse {dict(prep.drop_reasons) or ''})"
+        )
+
     if not rows:
         repo.record_progress(conn, APPROACH, target_date, cid, cname, "empty", 0)
         logger.info(f"·  {cname}: no rows for {target_date} (recorded as empty)")
         return "empty"
 
-    # CSV artifact (same layout as the old browser scraper's archive),
-    # built from the same rows we're about to store.
-    try:
-        write_commodity_csv(target_date, cname, rows)
-    except Exception as e:  # a CSV write failure must not lose the DB write
-        logger.warning(f"{cname}: CSV write failed (rows still upserted): {e}")
+    ins, upd, unch = _store_commodity_rows(conn, cid, cname, target_date, rows, stats)
+    logger.info(f"✓  {cname}: {len(rows)} rows this sweep  (+{ins} new / ~{upd} changed / ={unch} same)")
+    return "done"
 
+
+def _store_commodity_rows(conn, cid: int, cname: str, target_date: date,
+                          rows: list[dict], stats: SweepStats) -> tuple[int, int, int]:
+    """Upsert one commodity's normalized rows, record progress, and rewrite
+    its CSV from the DB. Shared by the sweep and by verify.py's --fix path.
+
+    The CSV is written from `market_prices_v3` *after* the upsert -- not just
+    the rows passed in -- so the file is the COMPLETE extract for the day
+    (every sweep's rows, including markets that reported late) and always
+    reconciles with v3. A CSV failure must not fail the committed DB write."""
     ins, upd, unch = repo.upsert_price_rows(conn, rows)
     stats.rows_inserted += ins
     stats.rows_updated += upd
     stats.rows_unchanged += unch
     repo.record_progress(conn, APPROACH, target_date, cid, cname, "done", rows_upserted=len(rows))
-    logger.info(f"✓  {cname}: {len(rows)} rows  (+{ins} new / ~{upd} changed / ={unch} same)")
-    return "done"
+
+    stored_name = rows[0]["commodity"]
+    try:
+        csv_rows = repo.rows_for_commodity_date(conn, stored_name, target_date) or rows
+        write_commodity_csv(target_date, stored_name, csv_rows)
+    except Exception as e:
+        logger.warning(f"{cname}: CSV write failed (rows still upserted): {e}")
+    return ins, upd, unch
+
+
+def probe_commodity(client: AgmarknetClient, solver, cid: int, gid: int, cname: str,
+                    target_date: date, stats: SweepStats) -> tuple[int, list[dict], object]:
+    """Fetch + parse ONE commodity WITHOUT writing anything. Returns
+    (declared_count, normalized_rows, ParseReport). Raises _CaptchaExhausted
+    / SchemaError / RateLimited / TransientError on an unrecoverable fetch.
+    Used by --verify-csv --live to compare the site against what we stored."""
+    ctx = {"commodity_id": cid, "commodity_name": cname, "group_id": gid,
+           "target_date": target_date.isoformat(), "purpose": "verify"}
+    first = _solve_and_fetch(client, solver, cid, gid, cname, target_date, ctx, stats,
+                             _MAX_CAPTCHA_ATTEMPTS)
+    raw_rows = client.fetch_all_pages(
+        first=first, group_id=gid, commodity_id=cid, target_date=target_date,
+    )
+    rows, prep = normalize_rows(raw_rows, fallback_commodity=cname, fallback_group=None)
+    return (first.total_count or len(raw_rows)), rows, prep
 
 
 class _CaptchaExhausted(Exception):
@@ -297,12 +350,13 @@ def run_sweep(
     force_taxonomy: bool = False,
     limit_commodities: int | None = None,
     only: list[str] | None = None,
+    catchup_days: int = 0,
 ) -> SweepStats:
     stats = SweepStats()
     try:
         with _single_instance_lock():
             return _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
-                                     limit_commodities, only)
+                                     limit_commodities, only, catchup_days)
     except BlockingIOError:
         logger.warning("another sweep is already running -- exiting (this is normal for the 4h timer)")
         with repo.connect() as conn:
@@ -312,10 +366,52 @@ def run_sweep(
         return stats
 
 
+def _sweep_dates(tgt: date, catchup_days: int) -> list[date]:
+    """The target date plus the previous `catchup_days` arrival dates, newest
+    first, clamped to the AGMARKNET data-start date. catchup_days=0 -> [tgt]."""
+    out: list[date] = []
+    for i in range(max(catchup_days, 0) + 1):
+        d = tgt - timedelta(days=i)
+        if d >= settings.data_min_date:
+            out.append(d)
+    return out
+
+
+def _sweep_one_date(bound, conn, client, solver, commodities: list[dict],
+                    tgt: date, stats: SweepStats) -> None:
+    """Resume + sweep one arrival date over the already-filtered commodity
+    list. Accumulates into `stats` (counts are cumulative across dates)."""
+    progress = repo.load_progress(
+        conn, APPROACH, tgt,
+        refresh_after_hours=settings.progress_refresh_after_hours,
+    )
+    todo = [c for c in commodities if progress.get(c["commodity_id"]) not in ("done", "empty")]
+    already = len(commodities) - len(todo)
+    bound.info(f"[{tgt}] {len(commodities)} commodities, {already} already done, {len(todo)} to do")
+
+    for pass_no in range(1, settings.sweep_passes + 1):
+        if not todo:
+            break
+        bound.info(f"[{tgt}] — pass {pass_no}/{settings.sweep_passes}: {len(todo)} commodities")
+        still: list[dict] = []
+        for c in todo:
+            outcome = _process_commodity(client, solver, conn, c, tgt, stats)
+            if outcome in ("done", "empty"):
+                stats.commodities_done += 1
+            else:
+                still.append(c)
+        todo = still
+        if todo:
+            bound.info(f"[{tgt}] — pass {pass_no} done: {len(todo)} still missing")
+
+    stats.commodities_failed += len(todo)
+
+
 def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
-                      limit_commodities=None, only=None) -> SweepStats:
+                      limit_commodities=None, only=None, catchup_days=0) -> SweepStats:
     tgt = resolve_target_date(target_date)
-    stats.target_date = tgt.isoformat()
+    dates = _sweep_dates(tgt, catchup_days)
+    stats.target_date = ",".join(d.isoformat() for d in dates)
 
     with repo.connect() as conn:
         # We hold the single-instance lock, so any 'running' row is a zombie
@@ -327,7 +423,8 @@ def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
         run_id = repo.start_run(conn, APPROACH, trigger, tgt)
         stats.run_id = run_id
         bound = logger.bind(run_id=f"run{run_id}")
-        bound.info(f"▶  sweep start  date={tgt}  trigger={trigger}")
+        span = str(tgt) if len(dates) == 1 else f"{dates[-1]}..{tgt} ({len(dates)} days)"
+        bound.info(f"▶  sweep start  dates={span}  trigger={trigger}")
 
         try:
             with AgmarknetClient() as client:
@@ -363,36 +460,16 @@ def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
                                    f"{settings.stale_empty_window_days}d) commodities -- "
                                    f"each re-checked every {settings.stale_empty_recheck_days}d")
 
-                stats.commodities_total = len(commodities)
-
-                progress = repo.load_progress(
-                    conn, APPROACH, tgt,
-                    refresh_after_hours=settings.progress_refresh_after_hours,
-                )
-                todo = [c for c in commodities if progress.get(c["commodity_id"]) not in ("done", "empty")]
-                already = len(commodities) - len(todo)
+                stats.commodities_total = len(commodities) * len(dates)
                 if settings.progress_refresh_after_hours:
                     bound.info(f"re-sweeping commodities finished > "
                                f"{settings.progress_refresh_after_hours}h ago for late arrivals")
-                bound.info(f"{len(commodities)} commodities, {already} already done for {tgt}, "
-                           f"{len(todo)} to do")
 
-                for pass_no in range(1, settings.sweep_passes + 1):
-                    if not todo:
-                        break
-                    bound.info(f"— pass {pass_no}/{settings.sweep_passes}: {len(todo)} commodities")
-                    still: list[dict] = []
-                    for c in todo:
-                        outcome = _process_commodity(client, solver, conn, c, tgt, stats)
-                        if outcome in ("done", "empty"):
-                            stats.commodities_done += 1
-                        else:
-                            still.append(c)
-                    todo = still
-                    if todo:
-                        bound.info(f"— pass {pass_no} done: {len(todo)} still missing")
-
-                stats.commodities_failed = len(todo)
+                # Newest date first: today's data is the priority; the older
+                # catch-up dates mop up mandis that reported late. Each date is
+                # independently checkpointed in pipeline_progress.
+                for dt in dates:
+                    _sweep_one_date(bound, conn, client, solver, commodities, dt, stats)
 
             if stats.commodities_failed == 0:
                 stats.status = "success"
@@ -411,15 +488,16 @@ def _run_sweep_locked(stats, trigger, target_date, force_taxonomy,
             if k in {
                 "commodities_total", "commodities_done", "commodities_failed",
                 "rows_seen", "rows_inserted", "rows_updated", "rows_unchanged",
-                "captcha_solves", "throttle_events",
+                "rows_missing", "captcha_solves", "throttle_events",
             }
         })
-        db_rows = repo.count_rows_for_date(conn, tgt)
+        holdings = "  ".join(f"{d}:{repo.count_rows_for_date(conn, d)}" for d in dates)
         bound.info(
             f"■  sweep {stats.status}  done={stats.commodities_done}/{stats.commodities_total} "
             f"failed={stats.commodities_failed}  rows +{stats.rows_inserted}/"
-            f"~{stats.rows_updated}/={stats.rows_unchanged}  captchas={stats.captcha_solves} "
-            f"throttles={stats.throttle_events}  v3 now holds {db_rows} rows for {tgt}"
+            f"~{stats.rows_updated}/={stats.rows_unchanged}  missing={stats.rows_missing} "
+            f"backfilled={stats.rows_backfilled}  captchas={stats.captcha_solves} "
+            f"throttles={stats.throttle_events}  v3 holds  {holdings}"
         )
 
     _post_run_notify(stats)
