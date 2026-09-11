@@ -291,6 +291,8 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                     verdict = f"MISSING {len(missing)} rows vs site"
                 elif declared > len(db_rows):
                     verdict = f"site declares {declared}, db has {len(db_rows)}"
+                elif stale:
+                    verdict = f"STALE {len(stale)} row(s) in db not on site"
                 print(f"  {name.ljust(w)}  site={declared:<4} parsed={len(site_rows):<4} "
                       f"db={len(db_rows):<4} missing={len(missing):<3} stale={len(stale):<3}"
                       f"{drop_note}  {verdict}")
