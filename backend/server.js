@@ -278,38 +278,16 @@ app.get('/api/filters/commodity-groups', (req, res) => {
   res.json(Object.keys(COMMODITY_GROUPS));
 });
 
-app.get('/api/filters/commodities', async (req, res) => {
-  try {
-    const pool = await getPool();
-    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices_v3 ORDER BY commodity');
-    let commodities = result.rows.map((r) => r.commodity);
-    const group = req.query.group;
-    if (group && group !== 'All') {
-      const groupSet = new Set((COMMODITY_GROUPS[group] || []).map((c) => c.toLowerCase()));
-      commodities = commodities.filter((c) => groupSet.has(String(c).toLowerCase()));
-    }
-    res.json(commodities);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Cross-references the DB's scraped commodities against the full site
-// taxonomy so the frontend can show exactly which commodities/groups have
-// no data yet, instead of that gap being invisible.
-app.get('/api/filters/commodity-coverage', async (req, res) => {
-  try {
-    const pool = await getPool();
-    const result = await pool.query('SELECT DISTINCT commodity FROM mandi.market_prices_v3');
-    const dbSet = new Set(result.rows.map((r) => String(r.commodity).toLowerCase()));
-    const groups = Object.entries(COMMODITY_GROUPS).map(([group, commodities]) => {
-      const missing = commodities.filter((c) => !dbSet.has(c.toLowerCase()));
-      return { group, total: commodities.length, scraped: commodities.length - missing.length, missing };
-    });
-    res.json(groups);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// Reference-file dimension too, same as commodity-groups above — the
+// dropdown lists the full agmarknet taxonomy (not just what's scraped so
+// far) so a commodity with zero rows is still selectable, rather than
+// silently disappearing depending on today's scrape coverage.
+app.get('/api/filters/commodities', (req, res) => {
+  const group = req.query.group;
+  const commodities = group && group !== 'All'
+    ? (COMMODITY_GROUPS[group] || [])
+    : Object.values(COMMODITY_GROUPS).flat();
+  res.json([...commodities].sort((a, b) => a.localeCompare(b)));
 });
 
 // Whitelisted so ORDER BY can never take raw user input.

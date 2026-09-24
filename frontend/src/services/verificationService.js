@@ -137,13 +137,6 @@ export async function getCommodities(group) {
   return apiGet(`/filters/commodities${q}`);
 }
 
-/** Per-group scraped-vs-site-taxonomy counts, with the actual list of
- * commodities that exist on agmarknet.gov.in but have no rows in
- * dbo.MarketPrices yet — used by SiteCoverage to make that gap visible. */
-export async function getCommodityCoverage() {
-  return apiGet('/filters/commodity-coverage');
-}
-
 export async function getCompletenessByDate() {
   return apiGet('/completeness');
 }

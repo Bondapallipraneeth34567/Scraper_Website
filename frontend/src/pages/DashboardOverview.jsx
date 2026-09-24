@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Database, Layers, Copy, FileWarning, MapPinned } from 'lucide-react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import SummaryCard from '../components/SummaryCard';
-import SiteCoverage from '../components/SiteCoverage';
 import { getOverviewStats } from '../services/verificationService';
 import { formatDate } from '../utils/format';
 
@@ -48,10 +47,6 @@ export default function DashboardOverview() {
             />
           </div>
         ))}
-      </div>
-
-      <div className="mt-5 max-w-2xl">
-        <SiteCoverage overview={overview} />
       </div>
     </DashboardLayout>
   );
