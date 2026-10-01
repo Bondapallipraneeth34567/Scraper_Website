@@ -7,6 +7,7 @@
   python -m mandi_pipeline.run --dump-sample          # pin the /report row keys
   python -m mandi_pipeline.run --status               # recent runs + today's progress
   python -m mandi_pipeline.run --verify-csv --date 2026-09-06   # CSV files vs market_prices_v3
+  python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --blob   # site vs the Azure Blob CSVs
 
 systemd runs `--once` every 4 hours (see deploy/). Each run only picks up
 commodities still missing for the day, so overlapping/rapid re-runs are safe.
@@ -95,12 +96,12 @@ def _cmd_remirror_csv(target_date: date) -> int:
 
 
 def _cmd_verify_csv(target_date: date | None, *, live: bool, fix: bool, deep: bool,
-                    only: list[str] | None, limit: int | None) -> int:
+                    only: list[str] | None, limit: int | None, blob: bool = False) -> int:
     from .agmarknet.verify import verify_day
 
     tgt = target_date or max(date.today(), settings.data_min_date)
-    return verify_day(tgt, live=live or fix or deep, fix=fix, deep=deep,
-                      only=only, limit=limit)
+    return verify_day(tgt, live=live or fix or deep or blob, fix=fix, deep=deep or blob,
+                      only=only, limit=limit, blob=blob)
 
 
 def _cmd_status() -> int:
@@ -147,6 +148,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="with --verify-csv: implies --live; also diff OUR csv file against the "
                         "site row-for-row and cell-by-cell (prices, quantity, units). Without "
                         "--only, checks every commodity for the day (1 CAPTCHA each)")
+    p.add_argument("--blob", action="store_true",
+                   help="with --verify-csv: implies --deep; compare the site against the CSV "
+                        "mirrored to Azure Blob instead of the local staging copy")
     p.add_argument("--ship-logs", action="store_true",
                    help="upload rotated scrape-log archives to blob (BLOB_PREFIX/logs/<YYYY-MM>/) and prune local")
     p.add_argument("--remirror-csv", metavar="YYYY-MM-DD", default=None,
@@ -171,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status()
     if args.verify_csv:
         return _cmd_verify_csv(
-            args.date, live=args.live, fix=args.fix, deep=args.deep,
+            args.date, live=args.live, fix=args.fix, deep=args.deep, blob=args.blob,
             only=[s for s in (args.only or "").split(",") if s.strip()] or None,
             limit=args.limit_commodities,
         )

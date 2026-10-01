@@ -12,6 +12,62 @@ the existing browser scraper's `mandi.market_prices_v2`.
 
 ---
 
+## 0. Scraper workflow at a glance
+
+End to end, as deployed on the VM (`/opt/mandi_pipeline`, systemd timers in
+`deploy/`). Each box maps to a step in §3; settings are in `.env`.
+
+```mermaid
+flowchart TD
+    subgraph TRIGGERS["Triggers (systemd timers on the VM)"]
+        T1["mandi-pipeline.timer<br/>every 4 h at :05 UTC<br/>run.py --once"]
+        T2["mandi-pipeline-catchup.timer<br/>daily 02:30 UTC<br/>target date + previous 3 days"]
+        T3["mandi-pipeline-logship.timer<br/>daily 06:20 UTC<br/>run.py --ship-logs"]
+    end
+
+    T1 --> LOCK
+    T2 --> LOCK
+    LOCK{"Single-instance lock<br/>state/pipeline.lock"} -->|already held| SKIP["record skipped_locked, exit"]
+    LOCK -->|acquired| RUN["pipeline_runs row = running<br/>(old zombie 'running' rows -> aborted)"]
+    RUN --> TAX["Taxonomy: GET /filters, no CAPTCHA<br/>cached in agmarknet_taxonomy (~605 commodities)"]
+    TAX --> DORM["Drop dormant commodities<br/>(empty every sweep for 10 days;<br/>re-checked every 7 days)"]
+    DORM --> DATES["Dates to sweep: today (IST), newest first<br/>+ N catch-up days"]
+    DATES --> RESUME["Resume from pipeline_progress<br/>skip done/empty, unless finished > 4 h ago<br/>(late arrivals)"]
+    RESUME --> PASS
+
+    subgraph PASS["Per commodity, up to SWEEP_PASSES = 3 passes (only failures retried)"]
+        C1["POST /captcha/generator<br/>image + key (~5 min validity)"]
+        C2["Solve: easyocr | trained CNN | llm |<br/>llm_assisted_ocr | manual"]
+        C3["POST /report<br/>one commodity, one date, limit=100000"]
+        C4{"Response"}
+        C5["Extra pages via report_ticket<br/>(no new CAPTCHA)"]
+        C6["Parse + normalise<br/>source_row_hash, de-dupe on unique key"]
+        C7["Sync to market_prices_v3<br/>insert new / update changed /<br/>prune stale (safety brake)"]
+        C8["pipeline_progress = done | empty | failed"]
+        C9["CSV state/downloads/date/Commodity.csv<br/>-> Azure Blob agmarknet_api/date/"]
+        C1 --> C2 --> C3 --> C4
+        C4 -->|"rows"| C5 --> C6 --> C7 --> C8 --> C9
+        C4 -->|"no data available"| C8
+        C4 -->|"captcha rejected"| C1
+        C4 -->|"429 / too many / socket hang"| BO["Backoff 15 s x 2^n (max 300 s, 4 tries)<br/>+ adaptive /report spacing"]
+        BO --> C3
+        C2 -->|"4 rejects"| MAN["Manual fallback<br/>operator console, 90 s"]
+        MAN --> C3
+    end
+
+    PASS --> FIN["finish_run: success | partial | failed<br/>rows new / changed / unchanged / pruned,<br/>captchas, throttles"]
+    FIN -->|success| HB["HEARTBEAT_URL ping"]
+    FIN -->|partial / failed| AL["ALERT_WEBHOOK_URL JSON summary"]
+    T3 --> SHIP["Upload rotated logs to blob<br/>agmarknet_api/logs/YYYY-MM/"]
+
+    C7 --> DB[("Postgres mandi schema<br/>market_prices_v3")]
+    DB --> VER["--verify-csv (offline / --deep / --fix / --blob)<br/>site vs DB vs CSV -> record_comparisons"]
+    DB --> DASH["QA dashboard (backend/ + frontend/)<br/>records, site comparison, duplicates"]
+    VER --> DASH
+```
+
+---
+
 ## 1. What is verified vs assumed
 
 **Verified live from the VM in the 2026-09-03 investigation**
@@ -279,6 +335,51 @@ cron equivalent, if you prefer:
 * `ALERT_WEBHOOK_URL` gets a JSON summary on `partial`/`failed`.
 * Alert if: newest run is `failed`; no `success` in 24 h; `throttle_events`
   spikes; `commodities_done` well below the taxonomy size.
+
+---
+
+## 7b. Verification, site comparison & duplicates
+
+Downstream of the sweep (bottom of the §0 diagram): `--verify-csv` checks
+the stored data against the live site and the dashboard shows the results.
+
+**Commands**
+
+```bash
+# offline: CSV vs DB counts for a day (free, no CAPTCHA)
+python -m mandi_pipeline.run --verify-csv --date 2026-09-06
+# site vs DB vs local CSV, row-by-row and cell-by-cell (1 CAPTCHA per commodity)
+python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --deep
+# same, and re-scrape anything that differs
+python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --deep --fix
+# site vs the CSVs in Azure Blob (needs blob credentials, i.e. run on the VM)
+python -m mandi_pipeline.run --verify-csv --date 2026-09-06 --blob
+```
+
+Every live check is saved to `mandi.record_comparisons` (latest result per
+commodity + date) and shown on the dashboard's **Site Comparison** page. The
+check needs a CAPTCHA per commodity, so it runs from the pipeline and the
+dashboard only reads the results. A full-day run takes about an hour or more
+and reconnects to Postgres if the server drops the connection.
+
+**Duplicates.** A *true duplicate* is the same state, district, market,
+commodity, **variety, grade** and arrival date (case and spacing ignored).
+The table's unique key blocks exact copies, so the dashboard's "True
+duplicates" tab is normally empty. Rows that share market, commodity and date
+but differ in variety or grade (e.g. Grade Range-1/2/3) are **variants**:
+separate real prices, listed read-only and never deletable. Resolving a true
+duplicate keeps the chosen row, moves its verification verdicts onto it, and
+writes each deleted row to `mandi.duplicate_audit`.
+
+**Scraper settings added for this** (all in `.env`, defaults shown):
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `CAPTCHA_FALLBACK_TIMEOUT_SEC` | 90 | Manual wait after EasyOCR fails 4 times (was 1800 s) |
+| `THROTTLE_GAP_STEP_SEC` | 4 | Extra `/report` spacing added per throttle response |
+| `THROTTLE_GAP_MAX_SEC` | 30 | Cap on that extra spacing |
+| `THROTTLE_GAP_DECAY_SEC` | 1 | Spacing removed again per successful report |
+| `THROTTLE_GIVEUP_COOLDOWN_SEC` | 120 | Pause after a commodity is abandoned for throttling |
 
 ---
 

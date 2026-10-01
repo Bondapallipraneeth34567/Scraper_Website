@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import re
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from loguru import logger
@@ -54,8 +55,11 @@ def _fmt(col: str, value) -> str:
     if col == "Arrival Date" and isinstance(value, date):
         return value.strftime("%d-%m-%Y")            # site's CSV format
     if col in ("Min Price", "Max Price", "Modal Price", "Arrival Quantity"):
-        # plain number, no thousands separators
-        return f"{float(value):g}"
+        # plain number exactly as stored: no thousands separators, no
+        # trailing zeros, never rounded and never scientific notation.
+        # (Was f"{float(value):g}", which keeps only 6 significant digits:
+        # 45600.19 -> 45600.2, 123456.78 -> 123457, 1000000 -> 1e+06.)
+        return format(Decimal(str(value)).normalize(), "f")
     return str(value)
 
 

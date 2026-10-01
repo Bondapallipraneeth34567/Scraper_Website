@@ -103,18 +103,30 @@ def _field_equal(kind: str, a, b) -> bool:
     return (str(a or "").strip().casefold()) == (str(b or "").strip().casefold())
 
 
+def _parse_csv_lines(lines) -> dict[tuple, dict]:
+    out: dict[tuple, dict] = {}
+    for raw in _csv.DictReader(lines):
+        row = {key: (raw.get(hdr) or "").strip()
+               for hdr, key in _CSV_HEADER_TO_KEY.items()}
+        out[_row_key(row)] = row
+    return out
+
+
 def _read_our_csv(path) -> dict[tuple, dict]:
     """Our per-commodity CSV file -> {row_key: normalized-ish row dict},
     keyed the same way as the parsed site rows so the two can be joined."""
-    out: dict[tuple, dict] = {}
     if not path.is_file():
-        return out
+        return {}
     with path.open("r", newline="", encoding="utf-8") as fh:
-        for raw in _csv.DictReader(fh):
-            row = {key: (raw.get(hdr) or "").strip()
-                   for hdr, key in _CSV_HEADER_TO_KEY.items()}
-            out[_row_key(row)] = row
-    return out
+        return _parse_csv_lines(fh)
+
+
+def _read_blob_csv(target_date: date, path) -> dict[tuple, dict]:
+    """Same as _read_our_csv, but for the copy mirrored to Azure Blob."""
+    import io
+    from .. import storage
+    text = storage.download_csv_text(target_date, path.name)
+    return _parse_csv_lines(io.StringIO(text, newline="")) if text is not None else {}
 
 
 def _deep_diff(site_rows: list[dict], our_csv: dict[tuple, dict]) -> dict:
@@ -130,6 +142,15 @@ def _deep_diff(site_rows: list[dict], our_csv: dict[tuple, dict]) -> dict:
             if not _field_equal(kind, s.get(name), c.get(name)):
                 field_diffs.append((k, name, s.get(name), c.get(name)))
     return {"only_site": only_site, "only_csv": only_csv, "field_diffs": field_diffs}
+
+
+def _conn_alive(conn) -> bool:
+    try:
+        conn.execute("SELECT 1")
+        conn.commit()
+        return True
+    except Exception:  # noqa: BLE001 -- any failure means "reconnect"
+        return False
 
 
 def _csv_counts(day_dir) -> tuple[dict[str, int], list[str]]:
@@ -217,7 +238,7 @@ def _print_offline(o: dict) -> None:
 
 
 def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
-          only: list[str] | None, limit: int | None) -> int:
+          only: list[str] | None, limit: int | None, blob: bool = False) -> int:
     """Diff the live site against the DB (and, with deep=True, cell-by-cell
     against our CSV file) for the target commodities. Returns the count of
     commodities still discrepant after any --fix."""
@@ -257,7 +278,8 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
             except BlockingIOError:
                 print("  !! a sweep is already running -- skipping --fix (try again later)")
                 return len(targets)
-        with repo.connect() as conn, AgmarknetClient() as client:
+        conn = stack.enter_context(repo.connect())
+        with AgmarknetClient() as client:
             tax = {c["commodity_name"]: c for c in taxonomy.get_sweep_list(conn, client)}
             tax_by_norm = {_norm(k): v for k, v in tax.items()}
             solver = build_solver()
@@ -277,6 +299,12 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                     print(f"  {name.ljust(w)}  XX fetch failed: {type(e).__name__}: {str(e)[:80]}")
                     still_short += 1
                     continue
+
+                # A full-day --deep run takes over an hour; the server drops
+                # idle connections, so reconnect before the DB half if needed.
+                if not _conn_alive(conn):
+                    logger.warning("DB connection dropped -- reconnecting")
+                    conn = stack.enter_context(repo.connect())
 
                 stored_name = site_rows[0]["commodity"] if site_rows else c["commodity_name"]
                 db_rows = repo.rows_for_commodity_date(conn, stored_name, target_date, source)
@@ -304,7 +332,10 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                     "stale": ["/".join(k) for k in sorted(stale)[:50]],
                 }
                 if deep:
-                    our_csv = _read_our_csv(commodity_csv_path(target_date, stored_name))
+                    csv_path = commodity_csv_path(target_date, stored_name)
+                    our_csv = (_read_blob_csv(target_date, csv_path) if blob
+                               else _read_our_csv(csv_path))
+                    details["csv_source"] = "blob" if blob else "local"
                     d = _deep_diff(site_rows, our_csv)
                     nd = len(d["field_diffs"])
                     csv_n, only_csv_n, diff_n = len(our_csv), len(d["only_csv"]), nd
@@ -314,7 +345,7 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                         for k, fld, sv, cv in d["field_diffs"][:100]]
                     deep_bad = bool(d["only_site"] or d["only_csv"] or nd)
                     if not our_csv:
-                        print(f"  {' '.ljust(w)}  -> deep: no CSV file for this commodity")
+                        print(f"  {' '.ljust(w)}  -> deep: no {'blob' if blob else 'local'} CSV for this commodity")
                     elif not deep_bad:
                         print(f"  {' '.ljust(w)}  -> deep: CSV matches site exactly "
                               f"({len(our_csv)} rows, all fields)")
@@ -332,6 +363,10 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                         for k in d["only_csv"][:4]:
                             print(f"  {' '.ljust(w)}      only in csv : {'/'.join(k)}")
 
+                if deep_bad and verdict == "in sync":
+                    # DB matches the site; only the CSV file is off
+                    verdict = (f"CSV differs: {diff_n} cell(s), {len(d['only_site'])} row(s) "
+                               f"missing, {only_csv_n} extra")
                 differs = bool(missing or stale or declared > len(db_rows) or deep_bad)
                 fixed_now = False
                 if differs:
@@ -377,14 +412,23 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
 
 def verify_day(target_date: date, *, source: str = "agmarknet_api",
                live: bool = False, fix: bool = False, deep: bool = False,
-               only: list[str] | None = None, limit: int | None = None) -> int:
+               only: list[str] | None = None, limit: int | None = None,
+               blob: bool = False) -> int:
     print(f"\nVerify CSV / DB / site -- arrival_date {target_date}  (source={source})")
+    if blob:
+        from .. import storage
+        why = storage.blob_status()
+        if why:
+            print(f"  !! --blob needs Azure Blob access, which isn't configured here: {why}")
+            return 2
+        deep = True  # the blob CSV is only read by the deep (cell-by-cell) pass
+        print("  CSV side = the copy mirrored to Azure Blob (not the local staging file)")
     o = _offline(target_date, source)
     _print_offline(o)
 
     exit_bad = 1 if o["flagged"] else 0
     if live or fix or deep:
-        still = _live(target_date, source, o, fix=fix, deep=deep, only=only, limit=limit)
+        still = _live(target_date, source, o, fix=fix, deep=deep, only=only, limit=limit, blob=blob)
         noun = "commodity" if still == 1 else "commodities"
         what = "discrepant vs the site" if deep else "the site is ahead on"
         if fix:

@@ -63,6 +63,26 @@ def blob_name_for(target_date: date, csv_path: Path) -> str:
     return f"{prefix}{target_date.isoformat()}/{csv_path.name}"
 
 
+def blob_status() -> str | None:
+    """None when the blob container is reachable, else why it isn't."""
+    return None if _get_container() is not None else _disabled_reason
+
+
+def download_csv_text(target_date: date, csv_name: str) -> str | None:
+    """The mirrored CSV for (date, file name) as text, or None if that blob
+    doesn't exist. Raises RuntimeError when blob isn't configured at all, so
+    a blob comparison can never silently fall back to "no file"."""
+    container = _get_container()
+    if container is None:
+        raise RuntimeError(f"blob not available: {_disabled_reason}")
+    from azure.core.exceptions import ResourceNotFoundError
+    name = blob_name_for(target_date, Path(csv_name))
+    try:
+        return container.download_blob(name).readall().decode("utf-8-sig")
+    except ResourceNotFoundError:
+        return None
+
+
 def upload_csv(target_date: date, csv_path: Path) -> bool:
     """Mirror one CSV to blob. Returns True only on a confirmed upload."""
     container = _get_container()

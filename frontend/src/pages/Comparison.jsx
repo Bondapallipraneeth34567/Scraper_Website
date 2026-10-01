@@ -55,7 +55,8 @@ export default function Comparison() {
         <div className="rounded-card border border-line bg-surface p-6 text-sm text-ink-soft shadow-card">
           No comparison has been run yet. The check needs a CAPTCHA per commodity, so it runs from the pipeline:
           <pre className="mt-3 overflow-x-auto rounded-lg bg-canvas p-3 text-xs text-ink">
-            python -m mandi_pipeline.run --verify-csv --date YYYY-MM-DD --deep
+            python -m mandi_pipeline.run --verify-csv --date YYYY-MM-DD --deep{'\n'}
+            python -m mandi_pipeline.run --verify-csv --date YYYY-MM-DD --blob   # compare the Azure Blob CSVs
           </pre>
           Results appear here automatically.
         </div>
@@ -136,7 +137,12 @@ export default function Comparison() {
                           <td className="px-3.5 py-2.5 font-semibold">{r.commodity}</td>
                           <td className="tnum px-3.5 py-2.5 text-right">{n(r.siteDeclared)}</td>
                           <td className="tnum px-3.5 py-2.5 text-right">{n(r.dbRows)}</td>
-                          <td className="tnum px-3.5 py-2.5 text-right">{n(r.csvRows)}</td>
+                          <td className="tnum px-3.5 py-2.5 text-right">
+                            {n(r.csvRows)}
+                            {r.details?.csv_source && (
+                              <span className="ml-1 text-[10px] text-ink-soft">{r.details.csv_source}</span>
+                            )}
+                          </td>
                           <td className="tnum px-3.5 py-2.5 text-right">{n(r.missingInDb)}</td>
                           <td className="tnum px-3.5 py-2.5 text-right">{n(r.staleInDb)}</td>
                           <td className="tnum px-3.5 py-2.5 text-right">{n(r.fieldDiffCount)}</td>
