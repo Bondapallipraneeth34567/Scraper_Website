@@ -174,9 +174,9 @@ app.get('/api/overview', async (req, res) => {
     `);
     const dupes = await pool.query(`
       SELECT COUNT(*) AS duplicate_groups FROM (
-        SELECT state, district, market, commodity, arrival_date
-        FROM mandi.market_prices_v3
-        GROUP BY state, district, market, commodity, arrival_date
+        SELECT 1 FROM mandi.market_prices_v3
+        GROUP BY lower(btrim(state)), lower(btrim(district)), lower(btrim(market)),
+                 lower(btrim(commodity)), lower(btrim(variety)), lower(btrim(grade)), arrival_date
         HAVING COUNT(*) > 1
       ) g
     `);
@@ -455,27 +455,159 @@ app.post('/api/records/:id/verify', async (req, res) => {
   }
 });
 
+// ---- Duplicates ---------------------------------------------------------
+// A TRUE duplicate is the same market/commodity/date AND the same variety +
+// grade (compared trimmed + case-insensitively). v3's UNIQUE constraint
+// already blocks exact copies, so these only appear as near-duplicates
+// (case/whitespace drift). Rows that share market/commodity/date but differ
+// in variety or grade (e.g. "Grade Range-1/2/3") are legitimate separate
+// price lines -- reported as "variants", never offered for deletion.
+const NORM_KEY = `lower(btrim(state)), lower(btrim(district)), lower(btrim(market)),
+  lower(btrim(commodity)), lower(btrim(variety)), lower(btrim(grade)), arrival_date`;
+const VARIANT_KEY = 'state, district, market, commodity, arrival_date';
+
+async function duplicateGroups(pool, kind, page, pageSize) {
+  const key = kind === 'variants' ? VARIANT_KEY : NORM_KEY;
+  const groups = await pool.query(
+    `SELECT array_agg(market_price_id ORDER BY market_price_id) AS ids
+     FROM mandi.market_prices_v3 GROUP BY ${key} HAVING COUNT(*) > 1
+     ORDER BY max(arrival_date) DESC, min(market_price_id)
+     LIMIT $1 OFFSET $2`,
+    [pageSize, (page - 1) * pageSize]
+  );
+  const allIds = groups.rows.flatMap((g) => g.ids);
+  const byId = new Map();
+  if (allIds.length) {
+    const rows = await pool.query(
+      'SELECT * FROM mandi.market_prices_v3 WHERE market_price_id = ANY($1::bigint[])', [allIds]
+    );
+    rows.rows.forEach((r) => byId.set(String(r.market_price_id), r));
+  }
+  return groups.rows.map((g) =>
+    g.ids.map((id) => {
+      const raw = byId.get(String(id));
+      return { ...toRecord(raw), variety: raw.variety, grade: raw.grade };
+    })
+  );
+}
+
 app.get('/api/duplicates', async (req, res) => {
   try {
     const pool = await getPool();
-    const groups = await pool.query(`
-      SELECT state, district, market, commodity, arrival_date, COUNT(*) AS c
-      FROM mandi.market_prices_v3
-      GROUP BY state, district, market, commodity, arrival_date
-      HAVING COUNT(*) > 1
-    `);
-    const out = [];
-    for (const g of groups.rows.slice(0, 50)) {
-      const rows = await pool.query(
-        `
-          SELECT * FROM mandi.market_prices_v3
-          WHERE state=$1 AND district=$2 AND market=$3 AND commodity=$4 AND arrival_date=$5
-        `,
-        [g.state, g.district, g.market, g.commodity, g.arrival_date]
-      );
-      out.push(rows.rows.map(toRecord));
+    const kind = req.query.kind === 'variants' ? 'variants' : 'exact';
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Number(req.query.pageSize) || 25);
+    const countOf = (key) => pool.query(
+      `SELECT COUNT(*) AS n FROM (SELECT 1 FROM mandi.market_prices_v3 GROUP BY ${key} HAVING COUNT(*) > 1) g`
+    );
+    const [exact, variants, groups] = await Promise.all([
+      countOf(NORM_KEY),
+      countOf(VARIANT_KEY),
+      duplicateGroups(pool, kind, page, pageSize),
+    ]);
+    const exactGroups = Number(exact.rows[0].n);
+    const variantGroups = Number(variants.rows[0].n);
+    res.json({
+      kind, page, pageSize,
+      total: kind === 'variants' ? variantGroups : exactGroups,
+      exactGroups, variantGroups, groups,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Keep one row of a TRUE-duplicate group, delete the rest. Refuses anything
+// that isn't the same normalized key (so a variety/grade variant can never
+// be deleted), keeps verification verdicts by re-pointing them at the kept
+// row, and writes the full deleted row to mandi.duplicate_audit.
+app.post('/api/duplicates/resolve', async (req, res) => {
+  const keepId = Number(req.body.keepId);
+  const deleteIds = (req.body.deleteIds || []).map(Number);
+  if (!Number.isInteger(keepId) || deleteIds.length === 0 || deleteIds.some((n) => !Number.isInteger(n)) || deleteIds.includes(keepId)) {
+    return res.status(400).json({ error: 'keepId and a non-empty deleteIds (not containing keepId) are required' });
+  }
+  const pool = await getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const rows = await client.query(
+      `SELECT *, concat_ws('|', lower(btrim(state)), lower(btrim(district)), lower(btrim(market)),
+          lower(btrim(commodity)), lower(btrim(variety)), lower(btrim(grade)), arrival_date::text) AS nkey
+       FROM mandi.market_prices_v3 WHERE market_price_id = ANY($1::bigint[]) FOR UPDATE`,
+      [[keepId, ...deleteIds]]
+    );
+    if (rows.rows.length !== deleteIds.length + 1) throw Object.assign(new Error('One or more rows no longer exist'), { status: 404 });
+    if (new Set(rows.rows.map((r) => r.nkey)).size !== 1) {
+      throw Object.assign(new Error('Rows are not true duplicates (variety/grade/market differ) -- refusing to delete'), { status: 409 });
     }
-    res.json(out);
+    for (const r of rows.rows) {
+      if (Number(r.market_price_id) === keepId) continue;
+      const { nkey, ...row } = r;
+      await client.query(
+        'INSERT INTO mandi.duplicate_audit (kept_id, deleted_id, deleted_row, deleted_by) VALUES ($1, $2, $3, $4)',
+        [keepId, r.market_price_id, JSON.stringify(row), req.user.name]
+      );
+    }
+    await client.query('UPDATE mandi.verification_results SET market_price_id = $1 WHERE market_price_id = ANY($2::bigint[])', [keepId, deleteIds]);
+    await client.query('DELETE FROM mandi.market_prices_v3 WHERE market_price_id = ANY($1::bigint[])', [deleteIds]);
+    await client.query('COMMIT');
+    res.json({ ok: true, kept: keepId, deleted: deleteIds.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(err.status || 500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/duplicates/audit', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const r = await pool.query(
+      `SELECT audit_id, kept_id, deleted_id, deleted_row, deleted_by, deleted_at
+       FROM mandi.duplicate_audit ORDER BY deleted_at DESC LIMIT 100`
+    );
+    res.json(r.rows.map((x) => ({
+      id: Number(x.audit_id), keptId: Number(x.kept_id), deletedId: Number(x.deleted_id),
+      row: x.deleted_row, deletedBy: x.deleted_by, deletedAt: new Date(x.deleted_at).toISOString(),
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Site-vs-DB comparison (written by `verify-csv --live/--deep`) --------
+app.get('/api/comparisons', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const dates = await pool.query(
+      `SELECT arrival_date AS d, COUNT(*) AS checked, COUNT(*) FILTER (WHERE NOT in_sync) AS mismatched,
+              MAX(checked_at) AS last_checked
+       FROM mandi.record_comparisons GROUP BY arrival_date ORDER BY arrival_date DESC`
+    );
+    const dateList = dates.rows.map((r) => ({
+      date: r.d.toISOString().slice(0, 10), checked: Number(r.checked), mismatched: Number(r.mismatched),
+      lastChecked: new Date(r.last_checked).toISOString(),
+    }));
+    const date = req.query.date || dateList[0]?.date;
+    let rows = [];
+    if (date) {
+      const r = await pool.query(
+        `SELECT commodity, site_declared, site_parsed, db_rows, csv_rows, missing_in_db, stale_in_db,
+                only_in_csv, field_diff_count, in_sync, verdict, fixed, details, checked_at
+         FROM mandi.record_comparisons WHERE arrival_date = $1
+         ORDER BY in_sync, commodity`,
+        [date]
+      );
+      rows = r.rows.map((x) => ({
+        commodity: x.commodity, siteDeclared: x.site_declared, siteParsed: x.site_parsed, dbRows: x.db_rows,
+        csvRows: x.csv_rows, missingInDb: x.missing_in_db, staleInDb: x.stale_in_db, onlyInCsv: x.only_in_csv,
+        fieldDiffCount: x.field_diff_count, inSync: x.in_sync, verdict: x.verdict, fixed: x.fixed,
+        details: x.details, checkedAt: new Date(x.checked_at).toISOString(),
+      }));
+    }
+    res.json({ dates: dateList, date: date || null, rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

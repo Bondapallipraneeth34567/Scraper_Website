@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, ListChecks, Copy, FileWarning, Settings, ClipboardCheck,
+  LayoutDashboard, ListChecks, Copy, FileWarning, Settings, ClipboardCheck, GitCompareArrows,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/verification', label: 'Data Verification', icon: ListChecks },
+  { to: '/comparison', label: 'Site Comparison', icon: GitCompareArrows },
   { to: '/duplicates', label: 'Duplicates', icon: Copy },
   { to: '/missing', label: 'Missing Data', icon: FileWarning },
   { to: '/settings', label: 'Settings', icon: Settings },

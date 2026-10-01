@@ -141,8 +141,25 @@ export async function getCompletenessByDate() {
   return apiGet('/completeness');
 }
 
-export async function getDuplicateGroups() {
-  return apiGet('/duplicates');
+/** kind: 'exact' (true duplicates, deletable) | 'variants' (same market/commodity/date but a
+ * different variety/grade -- legitimate, read-only). Returns { groups, total, exactGroups, variantGroups }. */
+export async function getDuplicateGroups({ kind = 'exact', page = 1, pageSize = 25 } = {}) {
+  return apiGet(`/duplicates?kind=${kind}&page=${page}&pageSize=${pageSize}`);
+}
+
+export async function resolveDuplicate(keepId, deleteIds) {
+  const out = await apiPost('/duplicates/resolve', { keepId, deleteIds });
+  notify();
+  return out;
+}
+
+export async function getDuplicateAudit() {
+  return apiGet('/duplicates/audit');
+}
+
+/** Saved site-vs-DB comparison results for one arrival date (default: latest checked). */
+export async function getComparisons(date) {
+  return apiGet(`/comparisons${date ? `?date=${encodeURIComponent(date)}` : ''}`);
 }
 
 export async function getNextPendingId(currentId) {

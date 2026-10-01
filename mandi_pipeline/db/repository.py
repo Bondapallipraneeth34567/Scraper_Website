@@ -544,3 +544,33 @@ def progress_detail_for_date(
             (approach, target_date),
         )
         return {r["commodity_name"]: r for r in cur.fetchall()}
+
+
+# ----------------------------------------------------------- comparison results
+def save_comparison(conn: psycopg.Connection, target_date: date, commodity: str, *,
+                    site_declared: int | None, site_parsed: int | None, db_rows: int | None,
+                    csv_rows: int | None, missing_in_db: int, stale_in_db: int,
+                    only_in_csv: int | None, field_diff_count: int | None,
+                    in_sync: bool, verdict: str, fixed: bool, details: dict) -> None:
+    """Upsert the latest site-vs-DB comparison for (date, commodity) so the
+    dashboard's Comparison page can show it."""
+    from psycopg.types.json import Jsonb
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO mandi.record_comparisons
+                 (arrival_date, commodity, site_declared, site_parsed, db_rows, csv_rows,
+                  missing_in_db, stale_in_db, only_in_csv, field_diff_count,
+                  in_sync, verdict, fixed, details, checked_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now() AT TIME ZONE 'utc')
+               ON CONFLICT (arrival_date, commodity) DO UPDATE SET
+                 site_declared=EXCLUDED.site_declared, site_parsed=EXCLUDED.site_parsed,
+                 db_rows=EXCLUDED.db_rows, csv_rows=EXCLUDED.csv_rows,
+                 missing_in_db=EXCLUDED.missing_in_db, stale_in_db=EXCLUDED.stale_in_db,
+                 only_in_csv=EXCLUDED.only_in_csv, field_diff_count=EXCLUDED.field_diff_count,
+                 in_sync=EXCLUDED.in_sync, verdict=EXCLUDED.verdict, fixed=EXCLUDED.fixed,
+                 details=EXCLUDED.details, checked_at=EXCLUDED.checked_at""",
+            (target_date, commodity, site_declared, site_parsed, db_rows, csv_rows,
+             missing_in_db, stale_in_db, only_in_csv, field_diff_count,
+             in_sync, verdict, fixed, Jsonb(details)),
+        )
+    conn.commit()

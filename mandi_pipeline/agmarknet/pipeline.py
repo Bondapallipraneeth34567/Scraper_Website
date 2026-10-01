@@ -185,6 +185,12 @@ def _process_commodity(
         repo.record_progress(conn, APPROACH, target_date, cid, cname, "failed",
                              last_error=f"exhausted retries: {e}")
         logger.error(f"✗ {cname}: gave up after retries: {e}")
+        # Throttled out: let the limiter cool down before the next commodity
+        # so one bad streak doesn't cascade into more abandoned commodities.
+        cd = settings.throttle_giveup_cooldown_sec
+        if cd > 0:
+            logger.warning(f"cooling down {cd:.0f}s after throttle give-up")
+            time.sleep(cd)
         return "failed"
 
     # --- success: page (usually 1), parse, upsert ---
@@ -348,7 +354,7 @@ def _build_fallback_solver(primary: "CaptchaSolver"):
         return None
     if isinstance(primary, ManualSolver):
         return None  # already manual -- no further fallback
-    return ManualSolver()
+    return ManualSolver(timeout=settings.captcha_fallback_timeout_sec)
 
 
 def _retry_call(fn, stats: SweepStats, label: str):

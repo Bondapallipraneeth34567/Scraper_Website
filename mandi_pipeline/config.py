@@ -105,6 +105,14 @@ class Settings:
     max_retries: int = field(default_factory=lambda: _i("MAX_RETRIES", 4))
     backoff_base_sec: float = field(default_factory=lambda: _f("BACKOFF_BASE_SEC", 15.0))
     backoff_max_sec: float = field(default_factory=lambda: _f("BACKOFF_MAX_SEC", 300.0))
+    # Adaptive pacing: every throttle response adds THROTTLE_GAP_STEP_SEC to
+    # the /report spacing (capped at THROTTLE_GAP_MAX_SEC); every successful
+    # report removes THROTTLE_GAP_DECAY_SEC again.
+    throttle_gap_step_sec: float = field(default_factory=lambda: _f("THROTTLE_GAP_STEP_SEC", 4.0))
+    throttle_gap_max_sec: float = field(default_factory=lambda: _f("THROTTLE_GAP_MAX_SEC", 30.0))
+    throttle_gap_decay_sec: float = field(default_factory=lambda: _f("THROTTLE_GAP_DECAY_SEC", 1.0))
+    # Extra cooldown after a commodity is abandoned because of throttling.
+    throttle_giveup_cooldown_sec: float = field(default_factory=lambda: _f("THROTTLE_GIVEUP_COOLDOWN_SEC", 120.0))
     sweep_passes: int = field(default_factory=lambda: _i("SWEEP_PASSES", 3))
     # AGMARKNET fills a day's markets in progressively. > 0 => a commodity
     # finished more than this many hours ago is re-swept on the next run to
@@ -140,6 +148,11 @@ class Settings:
     # manual | easyocr | llm | llm_assisted_ocr   ("ocr" is an alias for easyocr)
     captcha_solver: str = field(default_factory=lambda: _s("CAPTCHA_SOLVER", "manual").lower())
     captcha_wait_timeout_sec: float = field(default_factory=lambda: _f("CAPTCHA_WAIT_TIMEOUT_SEC", 1800.0))
+    # Timeout for the manual escalation that follows an exhausted automated
+    # solver. Much shorter than captcha_wait_timeout_sec (which stays for
+    # CAPTCHA_SOLVER=manual): an unattended run must not stall 30 min per
+    # commodity -- the commodity just falls through to the next sweep pass.
+    captcha_fallback_timeout_sec: float = field(default_factory=lambda: _f("CAPTCHA_FALLBACK_TIMEOUT_SEC", 90.0))
     captcha_state_dir: Path = field(default_factory=lambda: _path("CAPTCHA_STATE_DIR", "mandi_pipeline/state/captcha"))
     captcha_expected_len: int = field(default_factory=lambda: _i("CAPTCHA_EXPECTED_LEN", 6))
     # small floor between the previous /report and the next captcha mint, so

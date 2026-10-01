@@ -122,6 +122,7 @@ class AgmarknetClient:
             follow_redirects=True,
         )
         self._last_report_call = 0.0
+        self._extra_gap = 0.0  # adaptive: grows on throttle, decays on success
 
     # -- lifecycle --
     def close(self) -> None:
@@ -137,7 +138,7 @@ class AgmarknetClient:
     def _pace_report(self) -> None:
         """Keep calls to the throttled /report endpoint at least
         REQUEST_MIN_INTERVAL_SEC apart. /filters is not paced."""
-        gap = settings.request_min_interval_sec - (time.monotonic() - self._last_report_call)
+        gap = (settings.request_min_interval_sec + self._extra_gap) - (time.monotonic() - self._last_report_call)
         if gap > 0:
             time.sleep(gap)
 
@@ -198,7 +199,19 @@ class AgmarknetClient:
                                 expires_at=j.get("expires_at"))
 
     # -- 3. the data call --
-    def fetch_report(
+    def fetch_report(self, **kw) -> ReportResult:
+        """fetch_report_once + adaptive pacing: widen the /report spacing on
+        every throttle, narrow it again on success."""
+        try:
+            res = self._fetch_report_once(**kw)
+        except RateLimited:
+            self._extra_gap = min(self._extra_gap + settings.throttle_gap_step_sec,
+                                  settings.throttle_gap_max_sec)
+            raise
+        self._extra_gap = max(0.0, self._extra_gap - settings.throttle_gap_decay_sec)
+        return res
+
+    def _fetch_report_once(
         self,
         *,
         group_id: int,

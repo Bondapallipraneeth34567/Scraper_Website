@@ -298,10 +298,20 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                       f"{drop_note}  {verdict}")
 
                 deep_bad = False
+                csv_n = only_csv_n = diff_n = None
+                details: dict = {
+                    "missing": ["/".join(k) for k in sorted(missing)[:50]],
+                    "stale": ["/".join(k) for k in sorted(stale)[:50]],
+                }
                 if deep:
                     our_csv = _read_our_csv(commodity_csv_path(target_date, stored_name))
                     d = _deep_diff(site_rows, our_csv)
                     nd = len(d["field_diffs"])
+                    csv_n, only_csv_n, diff_n = len(our_csv), len(d["only_csv"]), nd
+                    details["only_csv"] = ["/".join(k) for k in d["only_csv"][:50]]
+                    details["field_diffs"] = [
+                        {"key": "/".join(k), "field": fld, "site": sv, "csv": cv}
+                        for k, fld, sv, cv in d["field_diffs"][:100]]
                     deep_bad = bool(d["only_site"] or d["only_csv"] or nd)
                     if not our_csv:
                         print(f"  {' '.ljust(w)}  -> deep: no CSV file for this commodity")
@@ -322,7 +332,9 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                         for k in d["only_csv"][:4]:
                             print(f"  {' '.ljust(w)}      only in csv : {'/'.join(k)}")
 
-                if missing or stale or declared > len(db_rows) or deep_bad:
+                differs = bool(missing or stale or declared > len(db_rows) or deep_bad)
+                fixed_now = False
+                if differs:
                     if fix and site_rows:
                         # we have the full site response here (prep.raw rows,
                         # declared total) -- safe to mirror/prune stale rows
@@ -339,8 +351,24 @@ def _live(target_date: date, source: str, o: dict, *, fix: bool, deep: bool,
                               f"-> db now {after}, CSV rebuilt")
                         if after != len(site_rows):
                             still_short += 1
+                        else:
+                            fixed_now = True
+                            db_rows = repo.rows_for_commodity_date(conn, stored_name, target_date, source)
                     else:
                         still_short += 1
+
+                try:
+                    repo.save_comparison(
+                        conn, target_date, stored_name,
+                        site_declared=declared, site_parsed=len(site_rows), db_rows=len(db_rows),
+                        csv_rows=csv_n, missing_in_db=len(missing), stale_in_db=len(stale),
+                        only_in_csv=only_csv_n, field_diff_count=diff_n,
+                        in_sync=(not differs) or fixed_now,
+                        verdict=verdict if not fixed_now else f"fixed (was: {verdict})",
+                        fixed=fixed_now, details=details,
+                    )
+                except Exception as e:  # noqa: BLE001 -- never fail a check over the dashboard cache
+                    logger.warning(f"{name}: could not save comparison for the dashboard: {e}")
 
     print(f"\n  captchas solved this run: {stats.captcha_solves}   "
           f"throttle backoffs: {stats.throttle_events}")

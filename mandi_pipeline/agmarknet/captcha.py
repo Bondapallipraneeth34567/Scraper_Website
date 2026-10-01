@@ -102,10 +102,10 @@ class CaptchaSolver(ABC):
 
 # --------------------------------------------------------------------- manual
 class ManualSolver(CaptchaSolver):
-    def __init__(self) -> None:
+    def __init__(self, timeout: float | None = None) -> None:
         self.dir: Path = settings.captcha_state_dir
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.timeout = settings.captcha_wait_timeout_sec
+        self.timeout = timeout if timeout is not None else settings.captcha_wait_timeout_sec
         self.poll_sec = 3.0
 
     def solve(self, challenge: CaptchaChallenge, context: dict) -> str:
