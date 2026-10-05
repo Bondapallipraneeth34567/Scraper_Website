@@ -7,6 +7,7 @@ const COLUMNS = [
   { key: 'state', label: 'State', sortable: true },
   { key: 'district', label: 'District', sortable: true },
   { key: 'market', label: 'Market', sortable: true },
+  { key: 'commodityGroup', label: 'Commodity Group', sortable: true },
   { key: 'commodity', label: 'Commodity', sortable: true },
   { key: 'minPrice', label: 'Min Price', sortable: true, num: true },
   { key: 'maxPrice', label: 'Max Price', sortable: true, num: true },
@@ -31,7 +32,7 @@ export default function RecordsTable({ records, total, loading, error, page, pag
   return (
     <div className="rounded-card border border-line bg-surface shadow-card">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="w-full min-w-[1000px] border-collapse text-sm">
           <thead>
             <tr className="bg-canvas">
               {COLUMNS.map((col) => {
@@ -84,6 +85,7 @@ export default function RecordsTable({ records, total, loading, error, page, pag
                   <td className="whitespace-nowrap px-3.5 py-2.5">{r.state}</td>
                   <td className="whitespace-nowrap px-3.5 py-2.5">{r.district}</td>
                   <td className="whitespace-nowrap px-3.5 py-2.5">{r.market}</td>
+                  <td className="whitespace-nowrap px-3.5 py-2.5 text-ink-soft">{r.commodityGroup || '—'}</td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 font-semibold">{r.commodity}</td>
                   <td className="tnum whitespace-nowrap px-3.5 py-2.5 text-right">{formatCurrency(r.minPrice)}</td>
                   <td className="tnum whitespace-nowrap px-3.5 py-2.5 text-right">{formatCurrency(r.maxPrice)}</td>

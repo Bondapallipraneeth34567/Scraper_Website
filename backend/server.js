@@ -27,6 +27,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMMODITY_GROUPS = JSON.parse(
   readFileSync(join(__dirname, 'data', 'agmarknet_commodities.json'), 'utf8')
 );
+// commodity (lowercased) -> group, the fallback for rows whose own
+// commodity_group column is empty.
+const GROUP_BY_COMMODITY = new Map(
+  Object.entries(COMMODITY_GROUPS).flatMap(([group, names]) => names.map((name) => [name.toLowerCase(), group]))
+);
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
@@ -126,6 +131,7 @@ function toRecord(row) {
     state: row.state,
     district: row.district,
     market: row.market,
+    commodityGroup: row.commodity_group || GROUP_BY_COMMODITY.get(String(row.commodity || '').toLowerCase()) || null,
     commodity: row.commodity,
     // Column names here are min_price/max_price/modal_price/arrival_quantity
     // (not the old *_quintal/arrival_qty names) as of the 2026-08-31
@@ -297,6 +303,7 @@ const SORT_COLUMNS = {
   state: 'mp.state',
   district: 'mp.district',
   market: 'mp.market',
+  commodityGroup: 'mp.commodity_group',
   commodity: 'mp.commodity',
   minPrice: 'mp.min_price',
   maxPrice: 'mp.max_price',
