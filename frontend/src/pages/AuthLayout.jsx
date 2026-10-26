@@ -8,8 +8,8 @@ export default function AuthLayout({ title, subtitle, children }) {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900">
             <ClipboardCheck size={20} className="text-good" />
           </div>
-          <div className="text-lg font-semibold text-ink">Verify QA</div>
-          <div className="text-xs text-ink-soft">Scraped data validation</div>
+          <div className="text-lg font-semibold text-ink"> Mandi Prices Dashboard</div>
+          <div className="text-xs text-ink-soft">Scraped data verification</div>
         </div>
 
         <div className="rounded-card border border-line bg-surface p-6 shadow-card">

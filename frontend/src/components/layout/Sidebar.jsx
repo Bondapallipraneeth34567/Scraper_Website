@@ -20,7 +20,7 @@ export default function Sidebar() {
           <ClipboardCheck size={17} className="text-good" />
         </div>
         <div>
-          <div className="text-[15px] font-semibold leading-tight text-white">Verify QA</div>
+          <div className="text-[15px] font-semibold leading-tight text-white">Market Mandi Prices Dashboard</div>
           <div className="text-[10px] uppercase tracking-wide text-slate-500">Scraped data validation</div>
         </div>
       </div>
